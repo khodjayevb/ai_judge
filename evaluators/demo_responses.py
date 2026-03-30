@@ -901,6 +901,238 @@ register("power_bi_engineer", _pbi_strong, _pbi_weak)
 
 
 # ══════════════════════════════════════════════════════════════════════════
+# AZURE DATA ARCHITECT
+# ══════════════════════════════════════════════════════════════════════════
+
+def _azure_arch_strong(question: str) -> str:
+    q = question.lower()
+    if "enterprise" in q and ("retail" in q or "platform" in q or "design" in q):
+        return (
+            "## Enterprise Data Platform Architecture for Retail\n\n"
+            "### Ingestion Layer\n"
+            "- **Real-time**: Azure Event Hubs (POS data, 500+ stores) → Databricks Structured Streaming / Stream Analytics\n"
+            "- **Batch**: Azure Data Factory with managed IR for supply chain feeds (daily/hourly schedules)\n\n"
+            "### Storage Layer — Medallion on ADLS Gen2\n"
+            "- **Bronze**: Raw data partitioned by source/date in Delta format\n"
+            "- **Silver**: Cleansed, deduplicated, conformed data with schema enforcement\n"
+            "- **Gold**: Star schemas and aggregates for Power BI and data science\n"
+            "- Partitioning: by store_region/date for optimal query performance at scale\n\n"
+            "### Processing Layer\n"
+            "- **Databricks** for heavy transformations, ML workloads\n"
+            "- **Synapse Serverless** for ad-hoc SQL exploration of Bronze/Silver layers\n\n"
+            "### Serving Layer\n"
+            "- **Power BI** with Import mode on Gold aggregates, DirectQuery for real-time dashboards\n"
+            "- **Synapse Dedicated Pool** for high-concurrency BI if needed\n\n"
+            "### Governance & Security\n"
+            "- **Microsoft Purview** for catalog, lineage, and sensitivity labels\n"
+            "- RBAC per workspace: data engineers (Bronze/Silver), analysts (Gold), data science (ML workspace)\n"
+            "- Private endpoints for all services, managed identities throughout"
+        )
+    elif "fabric" in q and ("standalone" in q or "versus" in q or "vs" in q or "differ" in q or "choose" in q):
+        return (
+            "## Fabric vs Standalone Azure Services\n\n"
+            "### Cost Model\n"
+            "- **Fabric**: Single capacity (CU) billing — all workloads share one pool\n"
+            "- **Standalone**: Separate billing per service (Databricks DBUs, Synapse DWUs, ADF pipeline runs)\n"
+            "- Fabric is simpler to budget; standalone gives more granular cost control\n\n"
+            "### Governance\n"
+            "- **Fabric**: Built-in OneLake governance, integrated lineage, endorsement\n"
+            "- **Standalone**: Requires separate Purview setup, more configuration\n\n"
+            "### Flexibility & Portability\n"
+            "- **Standalone**: Multi-cloud possible (Databricks on AWS/GCP), deep customization\n"
+            "- **Fabric**: Microsoft-only, less escape hatch, but rapid evolution\n\n"
+            "### When to Choose:\n"
+            "| Criteria | Fabric | Standalone |\n|---|---|---|\n"
+            "| Team wants simplicity | Yes | No |\n"
+            "| Multi-cloud required | No | Yes |\n"
+            "| Regulated/complex env | Consider | Yes |\n"
+            "| Budget predictability | Yes (CU) | Harder |\n"
+            "| Deep Spark customization | Limited | Full control |"
+        )
+    elif "purview" in q or "governance" in q and "catalog" in q:
+        return (
+            "## Data Governance with Microsoft Purview\n\n"
+            "### Data Catalog\n"
+            "- Auto-scan ADLS Gen2, Synapse, Databricks, SQL databases for asset discovery\n"
+            "- 200+ datasets organized by business domain with domain-level ownership\n\n"
+            "### Data Lineage\n"
+            "- End-to-end lineage from source → ADF pipelines → transformations → serving\n"
+            "- Integration with Databricks notebook lineage via OpenLineage\n\n"
+            "### Classification & Sensitivity\n"
+            "- Auto-classify PII (names, SSN, email) with built-in classifiers\n"
+            "- Apply sensitivity labels (Confidential, Internal, Public) with downstream enforcement\n\n"
+            "### Business Glossary\n"
+            "- Domain-specific terms owned by data stewards per business unit\n"
+            "- Link glossary terms to physical assets for business-technical mapping\n\n"
+            "### Access Policies\n"
+            "- Purview access policies integrated with ADLS Gen2 RBAC\n"
+            "- Self-serve data access requests with approval workflows"
+        )
+    elif "data mesh" in q:
+        return (
+            "## Data Mesh Architecture on Azure\n\n"
+            "### Core Principles\n"
+            "1. **Domain Ownership**: Each business domain owns its data end-to-end\n"
+            "2. **Data as a Product**: Published datasets with SLAs, schema contracts, quality metrics\n"
+            "3. **Self-Serve Platform**: Central team provides templates, policies, and tooling\n"
+            "4. **Federated Governance**: Purview as the cross-domain governance layer\n\n"
+            "### Azure Implementation\n"
+            "- **Per-domain**: Separate subscriptions or Fabric workspaces with domain team ownership\n"
+            "- **Data Products**: Published as Delta tables with defined schemas and access policies\n"
+            "- **Platform Team**: Provides landing zone templates (Bicep/Terraform), CI/CD pipelines, monitoring\n"
+            "- **Purview**: Federated catalog across all domains, lineage, glossary\n\n"
+            "### Data Product Contract\n"
+            "Each data product defines: schema version, refresh SLA, quality thresholds, ownership, access policy."
+        )
+    elif "zero trust" in q or ("security" in q and "pii" in q):
+        return (
+            "## Zero Trust Security for Azure Data Platform\n\n"
+            "### Principles Applied\n"
+            "- **Verify explicitly**: All access authenticated via Entra ID + MFA\n"
+            "- **Least privilege**: RBAC per resource, PIM for admin access\n"
+            "- **Assume breach**: Network segmentation, monitoring, encryption everywhere\n\n"
+            "### Network Security\n"
+            "- **Private endpoints** for ALL PaaS services (ADLS, Synapse, Databricks, Key Vault)\n"
+            "- No public endpoints — Azure Policy enforces this at subscription level\n"
+            "- NSG rules restrict traffic between subnets\n\n"
+            "### Identity & Access\n"
+            "- **Managed identities** for all service-to-service auth (no keys/passwords)\n"
+            "- Conditional Access policies for user access\n"
+            "- Regular access reviews (quarterly)\n\n"
+            "### Data Protection\n"
+            "- **CMK** (Customer-Managed Keys) in Azure Key Vault for encryption at rest\n"
+            "- TLS 1.2+ enforced for all data in transit\n"
+            "- Dynamic data masking for PII columns\n\n"
+            "### EU Data Residency\n"
+            "- Azure Policy enforces region pinning (EU West/North) for EU customer data\n"
+            "- Geo-replication disabled where GDPR requires"
+        )
+    elif "finops" in q or ("cost" in q and ("150k" in q or "optim" in q or "strateg" in q)):
+        return (
+            "## FinOps Strategy for Azure Data Platform\n\n"
+            "### Visibility\n"
+            "- **Azure Cost Management** with budgets and alerts per subscription/resource group\n"
+            "- **Tagging standards**: env (prod/dev), domain (sales/supply-chain), project, cost-center\n"
+            "- Monthly cost reviews with domain owners (showback reports)\n\n"
+            "### Optimization\n"
+            "- **Reserved capacity**: 1-3 year reservations for predictable workloads (Synapse DWUs, Databricks)\n"
+            "- **Auto-pause**: Synapse dedicated pools, Databricks clusters with auto-termination\n"
+            "- **Right-sizing**: Review VM SKUs quarterly based on utilization metrics\n"
+            "- **Spot instances**: For fault-tolerant Databricks batch jobs (60-90% savings)\n\n"
+            "### Governance\n"
+            "- Azure Policy to enforce allowed SKUs and prevent over-provisioning\n"
+            "- Chargeback model: costs allocated to business domains based on consumption\n"
+            "- Quarterly FinOps review with architecture and finance teams"
+        )
+    elif "teradata" in q or "migrat" in q:
+        return (
+            "## Teradata to Azure Migration Architecture\n\n"
+            "### Phased Approach\n"
+            "1. **Assess**: Inventory schemas, query patterns, data volumes (50TB), dependencies\n"
+            "2. **Migrate**: Schema conversion + data movement + validation\n"
+            "3. **Optimize**: Refactor for cloud-native patterns post-migration\n\n"
+            "### Target Options\n"
+            "| Target | Best For |\n|---|---|\n"
+            "| Synapse Dedicated Pool | Lift-and-shift SQL workloads, familiar T-SQL |\n"
+            "| Databricks Lakehouse | Modern lakehouse, Delta Lake, ML integration |\n"
+            "| Fabric Warehouse | Integrated analytics, simplest operations |\n\n"
+            "### Migration Tooling\n"
+            "- **Schema/DDL**: Azure Database Migration Service or manual conversion scripts\n"
+            "- **Data**: ADF Copy Activity (for bulk), Striim or Qlik (for CDC/continuous)\n"
+            "- **Validation**: Row counts, checksums, query result comparison\n\n"
+            "### Parallel Run\n"
+            "Run Teradata and Azure in parallel for 4-8 weeks. Compare query results before cutover."
+        )
+    elif "disaster" in q or "rpo" in q or "rto" in q or "dr" in q:
+        return (
+            "## Disaster Recovery Strategy (RPO 1h / RTO 4h)\n\n"
+            "### Storage (ADLS Gen2)\n"
+            "- **GZRS** (Geo-Zone-Redundant Storage) for cross-region durability\n"
+            "- RPO: ~15 minutes for async geo-replication (exceeds 1h requirement)\n\n"
+            "### Compute Recovery\n"
+            "- Databricks: Workspace config in Git/Terraform, redeploy to paired region\n"
+            "- Synapse: ARM templates for workspace, dedicated pool restore from geo-backup\n"
+            "- ADF: Git-integrated, redeploy pipelines to DR region\n\n"
+            "### Automated Failover\n"
+            "- Azure Traffic Manager or Front Door for endpoint failover\n"
+            "- Runbooks in Azure Automation for DR orchestration\n"
+            "- **Test quarterly**: Simulate failover to validate RTO meets 4h target\n\n"
+            "### Paired Regions\n"
+            "Use Azure Paired Regions (e.g., East US / West US) for compliance with data residency."
+        )
+    elif "well-architected" in q or "waf" in q or "five pillars" in q:
+        return (
+            "## Well-Architected Framework Review\n\n"
+            "### 1. Reliability\n"
+            "- Is ADLS Gen2 configured with GRS/GZRS? What's your RPO/RTO?\n"
+            "- Databricks cluster auto-restart on failure? ADF retry policies?\n\n"
+            "### 2. Security\n"
+            "- Private endpoints on all services? Managed identities (no shared keys)?\n"
+            "- Data encryption: CMK or Microsoft-managed? Key rotation schedule?\n\n"
+            "### 3. Cost Optimization\n"
+            "- Auto-pause enabled for Synapse/Databricks non-prod?\n"
+            "- Reserved capacity for production workloads? Tagging for cost allocation?\n\n"
+            "### 4. Operational Excellence\n"
+            "- Monitoring: Azure Monitor dashboards, alerting on pipeline failures?\n"
+            "- IaC: ARM/Bicep/Terraform for all resources? Git-backed ADF/Databricks?\n\n"
+            "### 5. Performance Efficiency\n"
+            "- Partitioning strategy on ADLS (date/region)? Databricks cluster sizing?\n"
+            "- Power BI: Import vs DirectQuery? Aggregation tables for large datasets?"
+        )
+    elif "public endpoint" in q or ("public" in q and "pii" in q):
+        return (
+            "## Do NOT Use Public Endpoints for PII Data\n\n"
+            "**This is a critical security risk.** Public endpoints expose your data lake to the internet.\n\n"
+            "### Risks\n"
+            "- Susceptible to brute-force, credential stuffing, and network-level attacks\n"
+            "- Violates Zero Trust principle of 'assume breach'\n"
+            "- May violate GDPR, HIPAA, or industry compliance requirements\n\n"
+            "### Required: Private Endpoints\n"
+            "- Deploy **private endpoints** for ADLS Gen2 and all connected services\n"
+            "- Disable public network access on the storage account\n"
+            "- Use **Azure Policy** (`Deny-PublicEndpoint`) to prevent future public endpoint creation\n\n"
+            "### Defense-in-Depth\n"
+            "Private endpoints + NSG rules + managed identities + encryption + Purview access policies."
+        )
+    elif "recommend" in q and len(q) < 60:
+        return (
+            "I'd love to help design your data platform, but I need more context first:\n\n"
+            "1. **Data volume & velocity**: How much data? Real-time or batch?\n"
+            "2. **Team size & skills**: How many engineers? SQL-heavy or Spark/Python?\n"
+            "3. **Compliance**: Any regulatory requirements (GDPR, HIPAA, SOX, industry-specific)?\n"
+            "4. **Budget**: What's the target monthly spend? Any existing Azure commitments?\n"
+            "5. **Timeline**: Greenfield build or migration from existing platform?\n"
+            "6. **Consumers**: Who uses the data? BI analysts, data scientists, applications?\n\n"
+            "Once I understand these, I can recommend the right architecture pattern."
+        )
+    else:
+        return (
+            "As an Azure Data Architect, I focus on enterprise-scale data platform design "
+            "aligned with the Azure Well-Architected Framework. My recommendations always "
+            "address security, governance, cost, reliability, and performance.\n\n"
+            "Could you provide more details about your specific architecture challenge?"
+        )
+
+
+def _azure_arch_weak(question: str) -> str:
+    q = question.lower()
+    if "enterprise" in q or "platform" in q: return "Use ADLS Gen2 for storage and Databricks for processing."
+    elif "fabric" in q: return "Fabric is the newer option. Standalone gives more control."
+    elif "purview" in q or "governance" in q: return "Use Purview for data cataloging and governance."
+    elif "data mesh" in q: return "Data mesh gives domains ownership of their data."
+    elif "zero trust" in q or "security" in q: return "Use private endpoints and managed identities."
+    elif "cost" in q or "finops" in q: return "Use reserved capacity and auto-pause to save costs."
+    elif "teradata" in q or "migrat" in q: return "Migrate to Synapse or Databricks using ADF."
+    elif "disaster" in q or "dr" in q: return "Use geo-redundant storage and backup your configs."
+    elif "well-architected" in q: return "Review against the five pillars of the Well-Architected Framework."
+    elif "public" in q: return "Don't use public endpoints for sensitive data."
+    else: return "Use Azure services for your data platform needs."
+
+
+register("azure_data_architect", _azure_arch_strong, _azure_arch_weak)
+
+
+# ══════════════════════════════════════════════════════════════════════════
 # CLINICAL TRIALS DATA ENGINEER
 # ══════════════════════════════════════════════════════════════════════════
 

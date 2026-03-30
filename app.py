@@ -434,7 +434,18 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <div class="container">
 
   <h1>AI Evaluation Framework</h1>
-  <p class="subtitle">Evaluate, compare, and track AI system prompts for clinical trials and data engineering</p>
+  <p class="subtitle">Evaluate, compare, and track AI system prompts</p>
+  <div style="display:flex;gap:1rem;justify-content:center;margin-bottom:1.5rem;flex-wrap:wrap">
+    <span style="background:var(--surface);padding:0.4rem 1rem;border-radius:8px;font-size:0.85rem">
+      <span style="color:var(--text2)">Target:</span> <strong>{{ config.TARGET_MODEL }}</strong> <span style="color:var(--text2)">({{ config.TARGET_PROVIDER }})</span>
+    </span>
+    <span style="background:var(--surface);padding:0.4rem 1rem;border-radius:8px;font-size:0.85rem">
+      <span style="color:var(--text2)">Judge:</span> <strong>{{ config.get_judge_config()['model'] }}</strong> <span style="color:var(--text2)">({{ config.get_judge_config()['provider'] }})</span>
+    </span>
+    <span style="background:{{'var(--green)' if config.MODE == 'live' else 'var(--yellow)'}};color:#000;padding:0.4rem 1rem;border-radius:8px;font-size:0.85rem;font-weight:600">
+      {{ config.MODE.upper() }}
+    </span>
+  </div>
 
   <!-- Tabs -->
   <div class="tabs">
