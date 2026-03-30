@@ -282,7 +282,10 @@ def resolve_system_prompt(local_prompt: str) -> str:
     elif source == "none":
         return ""
     elif source.startswith("file:"):
-        return Path(source[5:]).read_text(encoding="utf-8").strip()
+        p = Path(source[5:])
+        if not p.exists():
+            raise FileNotFoundError(f"System prompt file not found: {p}")
+        return p.read_text(encoding="utf-8").strip()
     return local_prompt
 
 

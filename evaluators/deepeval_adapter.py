@@ -94,7 +94,8 @@ def _create_custom_judge(judge_cfg: dict):
             return self.model_name
 
         def generate(self, prompt: str, schema=None) -> str:
-            return client_fn("You are an evaluation judge. Return JSON when asked.", prompt)
+            text, _ = client_fn("You are an evaluation judge. Return JSON when asked.", prompt)
+            return text
 
         async def a_generate(self, prompt: str, schema=None) -> str:
             return self.generate(prompt, schema)
