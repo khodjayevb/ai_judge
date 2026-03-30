@@ -104,14 +104,25 @@ def run_red_team(
     if on_progress:
         on_progress("Running red team assessment...")
 
-    # Monkey-patch ALL RedTeamer print methods to avoid Rich emoji crashes on
-    # Windows cp1252. DeepTeam has multiple methods that print with emojis:
-    #   _print_risk_assessment (line 479) — prints results table
-    #   _post_risk_assessment (line 481) — prints "deepteam login" promo
-    # Both crash AFTER assessment completes but BEFORE returning, losing results.
+    # Monkey-patch DeepTeam to fix two issues:
+    # 1. Rich emoji crashes on Windows cp1252 (print methods)
+    # 2. Async a_generate returns None for PIILeakage/Toxicity with Azure model
+    #    Fix: patch a_simulate_attacks to call sync simulate_attacks instead
     from deepteam.red_teamer.red_teamer import RedTeamer
     RedTeamer._print_risk_assessment = lambda self, *a, **kw: None
     RedTeamer._post_risk_assessment = lambda self, *a, **kw: None
+
+    # Patch vulnerability classes to use sync path (avoids async a_generate bug)
+    from deepteam.vulnerabilities.pii_leakage.pii_leakage import PIILeakage as _PII
+    from deepteam.vulnerabilities.toxicity.toxicity import Toxicity as _Tox
+
+    async def _sync_simulate_pii(self, **kwargs):
+        return self.simulate_attacks(**kwargs)
+    async def _sync_simulate_tox(self, **kwargs):
+        return self.simulate_attacks(**kwargs)
+
+    _PII.a_simulate_attacks = _sync_simulate_pii
+    _Tox.a_simulate_attacks = _sync_simulate_tox
 
     risk_assessment = None
     last_error = None
@@ -179,6 +190,13 @@ def run_red_team(
                               if hasattr(tc.vulnerability_type, "value")
                               else str(tc.vulnerability_type))
             vuln_label = vuln_label or "Unknown"
+
+            # Classify errors for better reporting
+            if tc_error:
+                if "response was filt" in tc_error:
+                    tc_error = "Azure content filter blocked attack generation (model refused to produce toxic/harmful content)"
+                elif "'NoneType' object has no attribute 'data'" in tc_error:
+                    tc_error = "Attack simulation failed — model refused to generate adversarial prompts for this vulnerability type"
 
             test_cases.append({
                 "vulnerability": str(vuln_label),
