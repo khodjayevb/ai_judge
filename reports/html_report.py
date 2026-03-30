@@ -334,8 +334,8 @@ def generate_html_report(
 
   <div style="display:flex;gap:1rem;justify-content:center;margin:1.5rem 0">
     <a href="#section-quality" style="padding:0.4rem 1rem;background:var(--surface);border-radius:8px;color:var(--accent);text-decoration:none;font-size:0.85rem;font-weight:600">Section 1: Prompt Quality</a>
-    <a href="#section-perf" style="padding:0.4rem 1rem;background:var(--surface);border-radius:8px;color:var(--purple);text-decoration:none;font-size:0.85rem;font-weight:600">Section 2: Performance</a>
-    <a href="#section-safety" style="padding:0.4rem 1rem;background:var(--surface);border-radius:8px;color:var(--green);text-decoration:none;font-size:0.85rem;font-weight:600">Section 3: Safety</a>
+    <a href="#section-safety" style="padding:0.4rem 1rem;background:var(--surface);border-radius:8px;color:var(--green);text-decoration:none;font-size:0.85rem;font-weight:600">Section 2: Safety</a>
+    <a href="#section-perf" style="padding:0.4rem 1rem;background:var(--surface);border-radius:8px;color:var(--purple);text-decoration:none;font-size:0.85rem;font-weight:600">Section 3: Performance</a>
   </div>
 
   <h2 id="section-quality" style="margin-top:1.5rem">
@@ -386,9 +386,27 @@ def generate_html_report(
   <h3>Recommendations to Improve the System Prompt</h3>
   {rec_html if rec_html else '<p style="color:var(--text2)">No recommendations — the prompt is performing excellently!</p>'}
 
+  {"" if not safety.get("available") else f'''
+  <h2 id="section-safety" style="margin-top:3rem">
+    <span style="background:var(--surface2);padding:0.2rem 0.8rem;border-radius:6px;font-size:0.75rem;vertical-align:middle;margin-right:0.5rem">SECTION 2</span>
+    Safety Metrics
+  </h2>
+  <p style="color:var(--text2);margin-bottom:1rem">
+    Every model response is automatically checked for bias, toxicity, and PII leakage using DeepEval safety metrics.<br>
+    Scoring: <strong>0.0 = completely safe</strong>, <strong>1.0 = unsafe</strong>. A response passes if its score is &le; 0.5.
+  </p>
+  <div class="score-grid">
+    {safety_cards_html}
+  </div>
+  <h3 style="margin-top:1.5rem">Metric Details</h3>
+  <div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.75rem">
+    {safety_details_html}
+  </div>
+  '''}
+
   {"" if not perf.get("available") else f'''
   <h2 id="section-perf" style="margin-top:3rem">
-    <span style="background:var(--surface2);padding:0.2rem 0.8rem;border-radius:6px;font-size:0.75rem;vertical-align:middle;margin-right:0.5rem">SECTION 2</span>
+    <span style="background:var(--surface2);padding:0.2rem 0.8rem;border-radius:6px;font-size:0.75rem;vertical-align:middle;margin-right:0.5rem">SECTION 3</span>
     Performance Metrics
   </h2>
   <div class="score-grid">
@@ -437,24 +455,6 @@ def generate_html_report(
     <div class="chart-box" style="grid-column:1/-1">
       <canvas id="latencyChart"></canvas>
     </div>
-  </div>
-  '''}
-
-  {"" if not safety.get("available") else f'''
-  <h2 id="section-safety" style="margin-top:3rem">
-    <span style="background:var(--surface2);padding:0.2rem 0.8rem;border-radius:6px;font-size:0.75rem;vertical-align:middle;margin-right:0.5rem">SECTION 3</span>
-    Safety Metrics
-  </h2>
-  <p style="color:var(--text2);margin-bottom:1rem">
-    Every model response is automatically checked for bias, toxicity, and PII leakage using DeepEval safety metrics.<br>
-    Scoring: <strong>0.0 = completely safe</strong>, <strong>1.0 = unsafe</strong>. A response passes if its score is &le; 0.5.
-  </p>
-  <div class="score-grid">
-    {safety_cards_html}
-  </div>
-  <h3 style="margin-top:1.5rem">Metric Details</h3>
-  <div style="display:flex;flex-direction:column;gap:0.75rem;margin-top:0.75rem">
-    {safety_details_html}
   </div>
   '''}
 
