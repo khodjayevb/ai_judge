@@ -269,6 +269,36 @@ def api_history():
     return jsonify(get_runs(limit=100, role=role))
 
 
+@app.route("/api/generate", methods=["POST"])
+def api_generate():
+    data = request.json
+    role = data.get("role", config.EVAL_ROLE)
+    count = int(data.get("count", 10))
+    job_id = f"generate_{role}_{len(_jobs)}"
+    _jobs[job_id] = {"status": "running", "progress": 0, "total": 1, "current_test": "Generating...", "result": None}
+
+    def _run():
+        try:
+            from generate_tests import generate_from_prompt, save_generated_tests
+            test_cases = generate_from_prompt(role, count=count)
+            path = save_generated_tests(test_cases, f"generated/{role}_tests.json")
+            _jobs[job_id]["status"] = "done"
+            _jobs[job_id]["progress"] = 1
+            _jobs[job_id]["result"] = {
+                "count": len(test_cases),
+                "test_cases": test_cases,
+                "file_path": path,
+            }
+        except Exception as e:
+            _jobs[job_id]["status"] = "error"
+            _jobs[job_id]["result"] = {"error": str(e)}
+
+    thread = threading.Thread(target=_run)
+    thread.daemon = True
+    thread.start()
+    return jsonify({"job_id": job_id})
+
+
 @app.route("/reports/<path:filename>")
 def serve_report(filename):
     return send_from_directory("reports", filename)
@@ -452,6 +482,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="tab active" onclick="switchTab('eval')">Run Evaluation</div>
     <div class="tab" onclick="switchTab('compare')">A/B Comparison</div>
     <div class="tab" onclick="switchTab('redteam')">Red Team</div>
+    <div class="tab" onclick="switchTab('generate')">Generate Tests</div>
   </div>
 
   <!-- ═══ EVALUATION TAB ═══ -->
@@ -630,6 +661,53 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- ═══ GENERATE TESTS TAB ═══ -->
+  <div class="tab-content" id="tab-generate">
+    <div class="panel">
+      <div class="panel-title">Generate Synthetic Test Cases</div>
+      <p style="color:var(--text2);margin-bottom:1rem;font-size:0.9rem">
+        Uses DeepEval Synthesizer to auto-generate test cases from a role's system prompt.
+        Generated tests include questions, expected outputs, and draft criteria.
+        <strong>Review and edit before using in evaluations.</strong>
+      </p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Role</label>
+          <select id="genRole">
+            {% for r in roles %}
+            <option value="{{ r.slug }}">{{ r.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="max-width:120px">
+          <label>Count</label>
+          <select id="genCount">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:0">
+          <label>&nbsp;</label>
+          <button class="btn btn-primary" id="btnGenerate" onclick="runGenerate()">Generate Test Cases</button>
+        </div>
+      </div>
+      <div class="progress-area" id="genProgress">
+        <div class="progress-bar-wrap"><div class="progress-bar" id="genBar" style="width:0%"></div></div>
+        <div class="progress-text" id="genText">Generating...</div>
+      </div>
+      <div class="result-flash" id="genResult"></div>
+      <div id="genTestCases" style="display:none;margin-top:1rem">
+        <h3 style="color:var(--accent);margin-bottom:0.75rem">Generated Test Cases <span id="genTestCount"></span></h3>
+        <div id="genTestList"></div>
+        <div style="margin-top:1rem;display:flex;gap:0.5rem">
+          <button class="btn" style="background:var(--surface2);color:var(--text)" onclick="downloadGenerated()">Download JSON</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ HISTORY ═══ -->
   <h2>Evaluation History</h2>
   <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem">
@@ -736,6 +814,35 @@ function runEval() {
 }
 
 // Run comparison
+let _generatedTests = [];
+
+function runGenerate() {
+  const role = document.getElementById('genRole').value;
+  const count = document.getElementById('genCount').value;
+  document.getElementById('btnGenerate').disabled = true;
+  document.getElementById('genTestCases').style.display = 'none';
+  showProgress('gen');
+  document.getElementById('genBar').style.width = '50%';
+  document.getElementById('genText').textContent = `Generating ${count} test cases for ${role}...`;
+
+  fetch('/api/generate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({role, count})
+  }).then(r => r.json()).then(d => pollJob(d.job_id, 'gen'));
+}
+
+function downloadGenerated() {
+  if (!_generatedTests.length) return;
+  const blob = new Blob([JSON.stringify(_generatedTests, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `generated_tests_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function runRedTeam() {
   const role = document.getElementById('rtRole').value;
   const model = getModel('rtModel');
@@ -807,7 +914,32 @@ function showResult(job, prefix) {
   flash.className = 'result-flash active success';
   const r = job.result;
 
-  if (r.total_attacks !== undefined) {
+  if (r.test_cases && r.count !== undefined && !r.total_attacks) {
+    // Generate result
+    _generatedTests = r.test_cases;
+    flash.innerHTML = `<strong style="color:var(--green)">Generated ${r.count} test cases!</strong> Review below and download as JSON.`;
+    const container = document.getElementById('genTestCases');
+    container.style.display = 'block';
+    document.getElementById('genTestCount').textContent = `(${r.count})`;
+    const list = document.getElementById('genTestList');
+    list.innerHTML = r.test_cases.map(tc => `
+      <div style="background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:0.5rem;border-left:3px solid var(--accent)">
+        <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:0.5rem">
+          <span style="font-weight:700;color:var(--accent);font-family:monospace">${tc.id}</span>
+          <span style="background:var(--surface2);padding:0.1rem 0.5rem;border-radius:4px;font-size:0.75rem">${tc.category}</span>
+          <span style="color:var(--text2);font-size:0.75rem">${tc.criteria.length} criteria | weight: ${tc.weight}x</span>
+          ${tc._needs_review ? '<span style="background:var(--orange);color:#000;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.65rem;font-weight:600">NEEDS REVIEW</span>' : ''}
+        </div>
+        <div style="font-size:0.9rem;margin-bottom:0.5rem"><strong>Q:</strong> ${tc.question}</div>
+        <details>
+          <summary style="cursor:pointer;color:var(--accent);font-size:0.8rem">View criteria${tc._expected_output ? ' & expected output' : ''}</summary>
+          <ul style="margin:0.5rem 0 0 1rem;font-size:0.8rem;color:var(--text2)">
+            ${tc.criteria.map(c => '<li>' + c + '</li>').join('')}
+          </ul>
+          ${tc._expected_output ? '<div style="background:var(--surface);padding:0.5rem;border-radius:6px;margin-top:0.5rem;font-size:0.8rem;max-height:200px;overflow-y:auto"><strong>Expected:</strong> ' + tc._expected_output.substring(0,500) + '</div>' : ''}
+        </details>
+      </div>`).join('');
+  } else if (r.total_attacks !== undefined) {
     // Red team result
     const color = r.overall_pass_rate >= 90 ? 'var(--green)' : r.overall_pass_rate >= 70 ? 'var(--yellow)' : 'var(--red)';
     const vulns = Object.entries(r.overview || {}).map(([k,v]) =>
