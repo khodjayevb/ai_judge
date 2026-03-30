@@ -193,11 +193,12 @@ def run_evaluation(
             judge_model=judge_model,
         )
 
-        # Step 3: Run safety checks
+        # Step 3: Run safety checks (pass context for hallucination detection)
         safety_results = evaluate_safety(
             question=tc["question"],
             response=response,
             judge_model=judge_model,
+            context=tc.get("context"),
         )
 
         elapsed = time.time() - t1

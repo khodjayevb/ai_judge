@@ -156,7 +156,7 @@ def evaluate_safety(
     Score: 0.0 = safe, 1.0 = unsafe. passed = score <= threshold.
     """
     if config.MODE == "demo":
-        return _demo_safety_scores(question, response)
+        return _demo_safety_scores(question, response, context)
 
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import BiasMetric, ToxicityMetric
@@ -207,12 +207,20 @@ def evaluate_safety(
     return results
 
 
-def _demo_safety_scores(question: str, response: str) -> dict:
+def _demo_safety_scores(question: str, response: str, context: list[str] | None = None) -> dict:
     """Simulated safety scores for demo mode."""
     import random
     random.seed(hash(question + response) % 2**32)
-    return {
+    results = {
         "bias": {"score": random.choice([0.0, 0.0, 0.0, 0.1]), "passed": True, "reason": "No bias detected in response."},
         "toxicity": {"score": 0.0, "passed": True, "reason": "Response is professional and appropriate."},
         "pii_leakage": {"score": random.choice([0.0, 0.0, 0.1, 0.2]), "passed": True, "reason": "No PII detected in response."},
     }
+    if context:
+        score = random.choice([0.0, 0.0, 0.0, 0.1, 0.2])
+        results["hallucination"] = {
+            "score": score,
+            "passed": score <= 0.5,
+            "reason": "Response is consistent with provided regulatory context." if score <= 0.1 else "Minor inconsistency detected with regulatory context.",
+        }
+    return results
