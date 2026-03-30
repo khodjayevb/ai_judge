@@ -749,9 +749,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="panel">
       <div class="panel-title">Generate Synthetic Test Cases</div>
       <p style="color:var(--text2);margin-bottom:1rem;font-size:0.9rem">
-        Uses DeepEval Synthesizer to auto-generate test cases from a role's system prompt.
-        Generated tests include questions, expected outputs, and draft criteria.
-        <strong>Review and edit before using in evaluations.</strong>
+        Generates test cases from reference documents and/or role system prompts.<br>
+        <strong>Best results:</strong> Add reference docs (standards, guides, best practices) to <code>docs/{'{role_slug}'}/</code> folder.
+        Without docs, falls back to the system prompt.
+        <strong>Review generated tests before using in evaluations.</strong>
       </p>
       <div class="form-row">
         <div class="form-group">
@@ -947,8 +948,9 @@ function saveAsTestSuite() {
 function runEvalOnGenerated() {
   if (!_generatedTests.length) return;
   const role = document.getElementById('genRole').value;
-  document.getElementById('genResult').className = 'result-flash active success';
-  document.getElementById('genResult').innerHTML = '<strong>Running evaluation on generated tests...</strong>';
+  showProgress('gen');
+  document.getElementById('genBar').style.width = '0%';
+  document.getElementById('genText').textContent = 'Running evaluation on generated tests...';
 
   fetch('/api/eval-generated', {
     method: 'POST',
