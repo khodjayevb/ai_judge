@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Evaluation Framework — DCRI</title>
+<style>
+  :root {
+    --bg: #0f172a; --surface: #1e293b; --surface2: #334155;
+    --text: #e2e8f0; --text2: #94a3b8; --accent: #38bdf8;
+    --green: #22c55e; --yellow: #eab308; --red: #ef4444;
+    --purple: #a78bfa; --orange: #f97316;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); }
+
+  /* Slide system */
+  .slide { display:none; min-height:100vh; padding:4rem 6rem; position:relative; }
+  .slide.active { display:flex; flex-direction:column; justify-content:center; }
+  .slide-num { position:absolute; bottom:2rem; right:3rem; color:var(--text2); font-size:0.9rem; }
+
+  /* Navigation */
+  .nav { position:fixed; bottom:2rem; left:50%; transform:translateX(-50%); display:flex; gap:0.5rem; z-index:100; }
+  .nav-dot { width:12px; height:12px; border-radius:50%; background:var(--surface2); cursor:pointer; border:none; transition:all 0.3s; }
+  .nav-dot.active { background:var(--accent); transform:scale(1.3); }
+  .nav-arrows { position:fixed; top:50%; right:2rem; transform:translateY(-50%); display:flex; flex-direction:column; gap:0.5rem; z-index:100; }
+  .nav-arrow { width:40px; height:40px; border-radius:50%; background:var(--surface); border:1px solid var(--surface2); color:var(--text); cursor:pointer; font-size:1.2rem; display:flex; align-items:center; justify-content:center; transition:all 0.2s; }
+  .nav-arrow:hover { background:var(--accent); color:var(--bg); }
+
+  /* Typography */
+  h1 { font-size:3rem; line-height:1.2; margin-bottom:1rem; }
+  h2 { font-size:2.2rem; margin-bottom:1.5rem; color:var(--accent); }
+  h3 { font-size:1.3rem; margin-bottom:0.75rem; color:var(--accent); }
+  p, li { font-size:1.15rem; line-height:1.7; color:var(--text); }
+  .subtitle { font-size:1.3rem; color:var(--text2); margin-bottom:2rem; }
+  .highlight { color:var(--accent); font-weight:700; }
+  .tag { display:inline-block; padding:0.2rem 0.7rem; border-radius:6px; font-size:0.8rem; font-weight:600; margin-right:0.3rem; }
+  .tag-green { background:var(--green); color:#000; }
+  .tag-purple { background:var(--purple); color:#000; }
+  .tag-orange { background:var(--orange); color:#fff; }
+  .tag-red { background:var(--red); color:#fff; }
+
+  /* Grid layouts */
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:2rem; margin-top:1.5rem; }
+  .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1.5rem; margin-top:1.5rem; }
+  .card { background:var(--surface); border-radius:16px; padding:1.5rem; }
+  .card h3 { margin-bottom:0.5rem; }
+  .card ul { padding-left:1.2rem; }
+  .card li { font-size:1rem; margin-bottom:0.4rem; }
+
+  /* Metric cards */
+  .metric { text-align:center; background:var(--surface); border-radius:16px; padding:1.5rem; }
+  .metric .value { font-size:2.5rem; font-weight:800; }
+  .metric .label { color:var(--text2); font-size:0.9rem; margin-top:0.3rem; }
+
+  /* Flow diagram */
+  .flow { display:flex; align-items:center; gap:0; margin:2rem 0; flex-wrap:wrap; justify-content:center; }
+  .flow-step { background:var(--surface); border-radius:12px; padding:1rem 1.5rem; text-align:center; min-width:140px; }
+  .flow-step .step-title { font-weight:700; font-size:1rem; color:var(--accent); }
+  .flow-step .step-detail { font-size:0.8rem; color:var(--text2); margin-top:0.3rem; }
+  .flow-arrow { font-size:1.5rem; color:var(--text2); padding:0 0.5rem; }
+
+  /* Table */
+  table { width:100%; border-collapse:collapse; margin-top:1rem; }
+  th { background:var(--surface2); padding:0.6rem 1rem; text-align:left; font-size:0.85rem; color:var(--text2); text-transform:uppercase; }
+  td { padding:0.6rem 1rem; border-bottom:1px solid var(--surface2); font-size:1rem; }
+
+  .logo-area { margin-bottom:2rem; }
+  .logo-area span { font-size:0.9rem; color:var(--text2); letter-spacing:0.15em; text-transform:uppercase; font-weight:600; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SLIDE 1: Title -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="slide active" id="slide-1">
+  <div class="logo-area">
+    <span>Duke Clinical Research Institute</span>
+  </div>
+  <h1>AI System Prompt<br>Evaluation Framework</h1>
+  <p class="subtitle">
+    Automated evaluation, scoring, and improvement of AI assistants<br>
+    for clinical trials data management
+  </p>
+  <div style="display:flex;gap:0.5rem;margin-top:1rem">
+    <span class="tag tag-green">BYOK — Any Model</span>
+    <span class="tag tag-purple">DeepEval Scoring</span>
+    <span class="tag tag-orange">21 CFR Part 11</span>
+    <span class="tag tag-red">HIPAA / GDPR</span>
+  </div>
+  <div class="slide-num">1 / 6</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SLIDE 2: The Problem -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-2">
+  <h2>The Problem</h2>
+  <p style="font-size:1.3rem;margin-bottom:2rem">
+    We use AI assistants for clinical data engineering, reporting, and security guidance.<br>
+    But <span class="highlight">how do we know the answers are correct, compliant, and safe?</span>
+  </p>
+  <div class="grid-3">
+    <div class="card">
+      <h3 style="color:var(--red)">Compliance Risk</h3>
+      <ul>
+        <li>Does the AI cite correct FDA regulations?</li>
+        <li>Does it recommend audit trails per 21 CFR Part 11?</li>
+        <li>Does it enforce HIPAA Safe Harbor de-identification?</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--orange)">No Standard Measurement</h3>
+      <ul>
+        <li>Different team members get different quality answers</li>
+        <li>No way to compare models objectively</li>
+        <li>No tracking of quality over time</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--yellow)">Prompt Engineering is Guesswork</h3>
+      <ul>
+        <li>System prompts are written intuitively</li>
+        <li>No data on what works vs what doesn't</li>
+        <li>No A/B testing of prompt variations</li>
+      </ul>
+    </div>
+  </div>
+  <div class="slide-num">2 / 6</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SLIDE 3: The Solution -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-3">
+  <h2>The Solution: Automated Evaluation</h2>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="step-title">System Prompt</div>
+      <div class="step-detail">Role-specific instructions<br>(clinical DE, reporting, security)</div>
+    </div>
+    <div class="flow-arrow">&#10132;</div>
+    <div class="flow-step">
+      <div class="step-title">Test Suite</div>
+      <div class="step-detail">12 questions with 5 criteria each<br>mapped to DCRI standards</div>
+    </div>
+    <div class="flow-arrow">&#10132;</div>
+    <div class="flow-step">
+      <div class="step-title">Target Model</div>
+      <div class="step-detail">Any LLM: GPT-4o, Claude,<br>Llama, Gemini, etc.</div>
+    </div>
+    <div class="flow-arrow">&#10132;</div>
+    <div class="flow-step">
+      <div class="step-title">Judge Model</div>
+      <div class="step-detail">DeepEval GEval scores<br>each criterion 0-1</div>
+    </div>
+    <div class="flow-arrow">&#10132;</div>
+    <div class="flow-step">
+      <div class="step-title">Report + History</div>
+      <div class="step-detail">Grade, recommendations,<br>performance metrics</div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top:2rem">
+    <div class="card">
+      <h3>What We Evaluate (Section 1)</h3>
+      <ul>
+        <li><strong>Prompt Quality</strong> — Does the model cite SDTM IG v3.4? Recommend Pinnacle 21? Enforce audit trails?</li>
+        <li><strong>Category Scores</strong> — Regulatory, CDISC, Pipeline, Security, GDPR, AI Governance</li>
+        <li><strong>Recommendations</strong> — Specific prompt improvements to fix weak areas</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>How It Performs (Section 2)</h3>
+      <ul>
+        <li><strong>Latency</strong> — Avg, P95, min/max response time</li>
+        <li><strong>Token Usage</strong> — Input/output tokens, verbosity</li>
+        <li><strong>Cost</strong> — Estimated API cost per evaluation run</li>
+      </ul>
+    </div>
+  </div>
+  <div class="slide-num">3 / 6</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SLIDE 4: Clinical Roles & Criteria -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-4">
+  <h2>Clinical Trials Roles & Criteria</h2>
+  <p style="margin-bottom:1.5rem">Test criteria derived from the <span class="highlight">DCRI Clinical Trials Test Suites</span> document — mapped to specific regulations.</p>
+
+  <div class="grid-3">
+    <div class="card" style="border-top:3px solid var(--accent)">
+      <h3>Clinical Data Engineer</h3>
+      <p style="font-size:0.9rem;color:var(--text2);margin-bottom:0.5rem">12 tests | 60 criteria</p>
+      <ul>
+        <li>Audit trails (21 CFR §11.10(e))</li>
+        <li>SDTM IG v3.4 + Pinnacle 21</li>
+        <li>ADaM IG v1.3 derivations</li>
+        <li>HIPAA Safe Harbor (18 identifiers)</li>
+        <li>SAS-to-Spark parity validation</li>
+        <li>GDPR cross-border transfers</li>
+      </ul>
+    </div>
+    <div class="card" style="border-top:3px solid var(--purple)">
+      <h3>Clinical Reporting Engineer</h3>
+      <p style="font-size:0.9rem;color:var(--text2);margin-bottom:0.5rem">10 tests | 50 criteria</p>
+      <ul>
+        <li>DSMB safety reports + data locks</li>
+        <li>Double-programming verification</li>
+        <li>TLF tolerance thresholds</li>
+        <li>eCTD submission (XPT v5)</li>
+        <li>SAE signal detection</li>
+        <li>Report versioning (§11.50)</li>
+      </ul>
+    </div>
+    <div class="card" style="border-top:3px solid var(--green)">
+      <h3>Clinical Security Engineer</h3>
+      <p style="font-size:0.9rem;color:var(--text2);margin-bottom:0.5rem">10 tests | 50 criteria</p>
+      <ul>
+        <li>PHI pseudonymization + Key Vault</li>
+        <li>Unblinding controls (ICH §5.5.2)</li>
+        <li>AES-256 / CMK / FIPS 140-2</li>
+        <li>VNet isolation (NIST 800-53)</li>
+        <li>EU-US transfer mechanisms</li>
+        <li>Immutable audit logging</li>
+      </ul>
+    </div>
+  </div>
+
+  <p style="margin-top:1.5rem;color:var(--text2);font-size:0.95rem">
+    + 4 data platform roles: Azure Data Engineer, Fabric Data Engineer, SQL Report Engineer, Power BI Engineer
+  </p>
+  <div class="slide-num">4 / 6</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SLIDE 5: Live Results -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-5">
+  <h2>Live Results: Clinical Data Engineer</h2>
+  <p style="margin-bottom:1.5rem">GPT-4o on Azure OpenAI | 12 test cases | DCRI criteria</p>
+
+  <div class="grid-3" style="margin-bottom:2rem">
+    <div class="metric">
+      <div class="value" style="color:var(--green)">A-</div>
+      <div class="label">Prompt Quality Grade</div>
+    </div>
+    <div class="metric">
+      <div class="value" style="color:var(--accent)">88.5%</div>
+      <div class="label">Overall Score</div>
+    </div>
+    <div class="metric">
+      <div class="value">17.5s</div>
+      <div class="label">Avg Latency</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div>
+      <h3>Category Scores</h3>
+      <table>
+        <tr><td>Ambiguity Handling</td><td style="color:var(--green);font-weight:700">95.2%</td></tr>
+        <tr><td>GDPR &amp; Cross-Border</td><td style="color:var(--green);font-weight:700">92.4%</td></tr>
+        <tr><td>CDISC Standards</td><td style="color:var(--green);font-weight:700">89.1%</td></tr>
+        <tr><td>Data Pipeline</td><td style="color:var(--yellow);font-weight:700">88.8%</td></tr>
+        <tr><td>Security &amp; Blinding</td><td style="color:var(--yellow);font-weight:700">87.8%</td></tr>
+        <tr><td>Regulatory Compliance</td><td style="color:var(--yellow);font-weight:700">83.0%</td></tr>
+        <tr><td>AI Governance</td><td style="color:var(--yellow);font-weight:700">82.8%</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>A/B Comparison: Weak vs Full Prompt</h3>
+      <table>
+        <tr><th>Metric</th><th>V1 (Weak)</th><th>V2 (Full)</th><th>Delta</th></tr>
+        <tr><td>Overall</td><td>77.6%</td><td>87.0%</td><td style="color:var(--green);font-weight:700">+9.4%</td></tr>
+        <tr><td>CDISC</td><td>71.7%</td><td>92.6%</td><td style="color:var(--green);font-weight:700">+20.9%</td></tr>
+        <tr><td>Ambiguity</td><td>85.2%</td><td>94.4%</td><td style="color:var(--green);font-weight:700">+9.2%</td></tr>
+        <tr><td>Grade</td><td>B</td><td>A-</td><td style="color:var(--green);font-weight:700">B &rarr; A-</td></tr>
+      </table>
+      <p style="margin-top:0.75rem;font-size:0.9rem;color:var(--text2)">
+        A well-crafted prompt improves CDISC compliance by <span class="highlight">+20.9%</span>
+      </p>
+    </div>
+  </div>
+  <div class="slide-num">5 / 6</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SLIDE 6: What's Next -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="slide" id="slide-6">
+  <h2>Key Capabilities &amp; Next Steps</h2>
+  <div class="grid-2">
+    <div>
+      <h3 style="color:var(--green)">What We Have Today</h3>
+      <div class="card" style="margin-top:0.5rem">
+        <ul>
+          <li><strong>7 roles</strong> — 3 clinical + 4 data platform</li>
+          <li><strong>BYOK</strong> — OpenAI, Claude, Azure, Foundry, Gemini, Ollama</li>
+          <li><strong>Web dashboard</strong> — run evaluations, A/B comparisons, track history</li>
+          <li><strong>DeepEval GEval</strong> — LLM-as-judge with chain-of-thought scoring</li>
+          <li><strong>Performance metrics</strong> — latency, tokens, cost tracking</li>
+          <li><strong>DCRI criteria</strong> — mapped to FDA, HIPAA, GDPR, CDISC standards</li>
+          <li><strong>Flexible comparisons</strong> — different models, prompts, or both</li>
+          <li><strong>Separate judge model</strong> — independent scoring for unbiased evaluation</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <h3 style="color:var(--accent)">Potential Next Steps</h3>
+      <div class="card" style="margin-top:0.5rem">
+        <ul>
+          <li><strong>Expand test suites</strong> — more clinical scenarios from DCRI SOPs</li>
+          <li><strong>Automated regression</strong> — run on schedule, alert on score drops</li>
+          <li><strong>Model comparison matrix</strong> — rank multiple models side-by-side</li>
+          <li><strong>Prompt auto-improvement</strong> — use recommendations to auto-refine prompts</li>
+          <li><strong>Integration with CI/CD</strong> — block deployment if prompt scores drop below threshold</li>
+          <li><strong>RAG evaluation</strong> — test retrieval-augmented generation pipelines</li>
+          <li><strong>Custom criteria builder</strong> — UI for non-technical users to add test cases</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center;margin-top:2.5rem">
+    <p style="font-size:1.3rem;color:var(--accent);font-weight:700">Try it now</p>
+    <p style="font-size:1.1rem;color:var(--text2);margin-top:0.5rem">
+      <code style="background:var(--surface);padding:0.4rem 1rem;border-radius:8px;font-size:1.1rem">python app.py</code>
+      &nbsp;&nbsp;then open&nbsp;&nbsp;
+      <code style="background:var(--surface);padding:0.4rem 1rem;border-radius:8px;font-size:1.1rem">http://localhost:5000</code>
+    </p>
+  </div>
+  <div class="slide-num">6 / 6</div>
+</div>
+
+<!-- Navigation -->
+<div class="nav" id="navDots"></div>
+<div class="nav-arrows">
+  <button class="nav-arrow" onclick="prev()">&#9650;</button>
+  <button class="nav-arrow" onclick="next()">&#9660;</button>
+</div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+let current = 0;
+
+function showSlide(n) {
+  slides[current].classList.remove('active');
+  current = (n + slides.length) % slides.length;
+  slides[current].classList.add('active');
+  updateDots();
+}
+function next() { showSlide(current + 1); }
+function prev() { showSlide(current - 1); }
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); next(); }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); prev(); }
+});
+
+// Dots
+const dotsEl = document.getElementById('navDots');
+slides.forEach((_, i) => {
+  const dot = document.createElement('button');
+  dot.className = 'nav-dot' + (i === 0 ? ' active' : '');
+  dot.onclick = () => showSlide(i);
+  dotsEl.appendChild(dot);
+});
+function updateDots() {
+  dotsEl.querySelectorAll('.nav-dot').forEach((d, i) => {
+    d.classList.toggle('active', i === current);
+  });
+}
+</script>
+</body>
+</html>

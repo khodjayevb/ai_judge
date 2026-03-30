@@ -1,0 +1,8 @@
+openai>=1.0.0
+rich>=13.0.0
+deepeval>=1.0.0
+flask>=3.0.0
+
+# Optional providers (install only what you need)
+# anthropic>=0.30.0      # For Claude models
+# google-genai>=1.0.0    # For Gemini models

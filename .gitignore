@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+reports/*.html
+.deepeval/
+results.db
+*.db-wal
+*.db-shm
