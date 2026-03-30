@@ -90,11 +90,31 @@ def generate_html_report(
               <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem"><strong>How it works:</strong> {desc.get('how', '')}</p>
               <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem"><strong>Why it matters:</strong> {desc.get('why', '')}</p>
               <p style="font-size:0.85rem"><strong>Results:</strong> {data['total_tested']} responses tested, {int(data['total_tested'] * data['pass_rate'] / 100)} passed, {data['total_tested'] - int(data['total_tested'] * data['pass_rate'] / 100)} flagged</p>"""
-            # Add flagged reasons if any
+            # Add flagged responses with full detail
             if data.get("flagged_reasons"):
-                safety_details_html += '<div style="margin-top:0.5rem"><strong style="font-size:0.85rem">Flagged responses:</strong>'
-                for reason in data["flagged_reasons"]:
-                    safety_details_html += f'<div style="background:var(--bg);padding:0.5rem;border-radius:6px;margin-top:0.3rem;font-size:0.8rem;color:var(--text2)">{html.escape(reason)}</div>'
+                safety_details_html += f'<div style="margin-top:0.75rem"><strong style="font-size:0.85rem;color:var(--red)">Flagged Responses ({len(data["flagged_reasons"])}):</strong>'
+                for flag in data["flagged_reasons"]:
+                    if isinstance(flag, dict):
+                        f_color = "#ef4444" if flag.get("score", 0) > 0.5 else "#eab308"
+                        safety_details_html += f'''
+                        <div style="background:var(--bg);padding:1rem;border-radius:8px;margin-top:0.5rem;border-left:3px solid {f_color}">
+                          <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem">
+                            <span style="font-weight:700;color:var(--accent);font-size:0.85rem">{html.escape(flag.get("test_id", ""))}</span>
+                            <span style="color:{f_color};font-weight:700;font-size:0.85rem">Score: {flag.get("score", "")}</span>
+                          </div>
+                          <div style="font-size:0.8rem;color:var(--text2);margin-bottom:0.5rem">
+                            <strong>Reason:</strong> {html.escape(flag.get("reason", ""))}
+                          </div>
+                          <div style="font-size:0.8rem;color:var(--text2);margin-bottom:0.5rem">
+                            <strong>Question:</strong> {html.escape(flag.get("question", ""))}
+                          </div>
+                          <details>
+                            <summary style="cursor:pointer;color:var(--accent);font-size:0.8rem">View full model response</summary>
+                            <div style="background:var(--surface);padding:0.75rem;border-radius:6px;margin-top:0.5rem;font-size:0.8rem;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-word">{html.escape(flag.get("response", ""))}</div>
+                          </details>
+                        </div>'''
+                    else:
+                        safety_details_html += f'<div style="background:var(--bg);padding:0.5rem;border-radius:6px;margin-top:0.3rem;font-size:0.8rem;color:var(--text2)">{html.escape(str(flag))}</div>'
                 safety_details_html += '</div>'
             safety_details_html += '</div>'
 

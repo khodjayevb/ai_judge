@@ -110,7 +110,13 @@ class EvalReport:
                     if r.safety[metric_name]["passed"]:
                         passed_count += 1
                     if r.safety[metric_name]["score"] > 0.3:
-                        reasons.append(f"{r.test_id}: {r.safety[metric_name]['reason'][:100]}")
+                        reasons.append({
+                            "test_id": r.test_id,
+                            "score": r.safety[metric_name]["score"],
+                            "reason": r.safety[metric_name]["reason"],
+                            "question": r.question,
+                            "response": r.response,
+                        })
 
             if scores:
                 metrics[metric_name] = {
@@ -118,7 +124,7 @@ class EvalReport:
                     "max_score": round(max(scores), 3),
                     "pass_rate": round(passed_count / len(scores) * 100, 1),
                     "total_tested": len(scores),
-                    "flagged_reasons": reasons[:5],
+                    "flagged_reasons": reasons,
                 }
 
         all_pass_rates = [m["pass_rate"] for m in metrics.values()]
