@@ -98,7 +98,7 @@ def evaluate_criteria(
     domain: str,
     judge_model,
 ) -> list[dict]:
-    """Evaluate against criteria. Returns list of {score, explanation}."""
+    """Evaluate against criteria. Returns list of {score, explanation, dag_score}."""
     if config.MODE == "demo":
         return demo_judge_scores(response, len(criteria), question + response)
 
@@ -113,29 +113,96 @@ def _evaluate_with_deepeval(question, response, criteria, domain, judge_model):
 
     results = []
     for criterion in criteria:
-        metric = GEval(
-            name=criterion[:60],
-            criteria=(
-                f"Evaluate whether the response adequately addresses: {criterion}. "
-                f"Context: This is a {domain} assistant."
-            ),
-            evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
-            model=judge_model,
-            threshold=0.5,
-            verbose_mode=False,
-        )
+        result = {"score": 0.0, "explanation": "", "dag_score": None}
+
+        # GEval (non-deterministic, nuanced)
         try:
+            metric = GEval(
+                name=criterion[:60],
+                criteria=(
+                    f"Evaluate whether the response adequately addresses: {criterion}. "
+                    f"Context: This is a {domain} assistant."
+                ),
+                evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
+                model=judge_model,
+                threshold=0.5,
+                verbose_mode=False,
+            )
             metric.measure(test_case)
-            results.append({
-                "score": round(metric.score, 2),
-                "explanation": metric.reason or "No explanation provided.",
-            })
+            result["score"] = round(metric.score, 2)
+            result["explanation"] = metric.reason or "No explanation provided."
         except Exception as e:
-            results.append({
-                "score": 0.0,
-                "explanation": f"Evaluation error: {str(e)[:200]}",
-            })
+            result["explanation"] = f"GEval error: {str(e)[:200]}"
+
+        # DAG (deterministic, reproducible)
+        try:
+            dag_score = _evaluate_criterion_with_dag(test_case, criterion, domain, judge_model)
+            result["dag_score"] = dag_score
+        except Exception:
+            pass  # DAG is supplementary — don't fail if it errors
+
+        results.append(result)
     return results
+
+
+def _evaluate_criterion_with_dag(test_case, criterion: str, domain: str, judge_model) -> float:
+    """Evaluate a single criterion using a DAG decision tree.
+
+    Decision tree:
+      1. Is the criterion addressed at all? (Binary: Yes/No)
+         - No → score 0
+         - Yes → 2. How thoroughly?
+           2. Is it addressed with specific detail? (Non-binary: Fully/Partially/Barely)
+              - Fully (with examples, specifics) → score 10
+              - Partially (mentioned but lacks depth) → score 6
+              - Barely (vague reference) → score 3
+    """
+    from deepeval.metrics import DAGMetric
+    from deepeval.metrics.dag import (
+        DeepAcyclicGraph,
+        BinaryJudgementNode,
+        NonBinaryJudgementNode,
+        VerdictNode,
+    )
+
+    # Level 2: Depth check
+    depth_node = NonBinaryJudgementNode(
+        criteria=(
+            f"How thoroughly does the response address this criterion: '{criterion}'? "
+            f"Context: {domain} assistant. "
+            f"'Fully' means with specific details, examples, or actionable guidance. "
+            f"'Partially' means mentioned but lacks specificity. "
+            f"'Barely' means vaguely referenced or only implied."
+        ),
+        children=[
+            VerdictNode(verdict="Fully", score=10),
+            VerdictNode(verdict="Partially", score=6),
+            VerdictNode(verdict="Barely", score=3),
+        ],
+    )
+
+    # Level 1: Addressed at all?
+    root_node = BinaryJudgementNode(
+        criteria=(
+            f"Does the response address this criterion at all: '{criterion}'? "
+            f"Context: {domain} assistant."
+        ),
+        children=[
+            VerdictNode(verdict=False, score=0),
+            VerdictNode(verdict=True, child=depth_node),
+        ],
+    )
+
+    dag = DeepAcyclicGraph(root_nodes=[root_node])
+    metric = DAGMetric(
+        name=f"DAG: {criterion[:40]}",
+        dag=dag,
+        model=judge_model,
+        threshold=0.5,
+        verbose_mode=False,
+    )
+    metric.measure(test_case)
+    return round(metric.score, 2)
 
 
 # ══════════════════════════════════════════════════════════════════════════

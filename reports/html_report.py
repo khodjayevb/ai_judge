@@ -134,13 +134,18 @@ def generate_html_report(
         criteria_html = ""
         for c in r.criteria_results:
             bar_color = _score_bar_color(c.score)
+            dag_badge = ""
+            if c.dag_score is not None:
+                dag_color = _score_bar_color(c.dag_score)
+                dag_badge = f' <span style="background:{dag_color};color:#000;padding:0.1rem 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:600;margin-left:0.3rem" title="DAG (deterministic) score">DAG: {c.dag_score:.0%}</span>'
+
             criteria_html += f"""
             <div class="criterion-row">
                 <div class="criterion-text">{html.escape(c.text)}</div>
                 <div class="criterion-bar-wrap">
                     <div class="criterion-bar" style="width:{c.score*100}%;background:{bar_color}"></div>
                 </div>
-                <div class="criterion-score">{c.score:.0%}</div>
+                <div class="criterion-score">{c.score:.0%}{dag_badge}</div>
                 <div class="criterion-explanation">{html.escape(c.explanation)}</div>
             </div>"""
 

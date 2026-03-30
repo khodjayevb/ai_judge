@@ -14,8 +14,9 @@ from evaluators.deepeval_adapter import create_judge_model, evaluate_criteria, e
 @dataclass
 class CriterionResult:
     text: str
-    score: float          # 0.0 - 1.0
+    score: float          # 0.0 - 1.0 (GEval)
     explanation: str
+    dag_score: float | None = None  # 0.0 - 1.0 (DAG, deterministic)
 
 
 @dataclass
@@ -218,6 +219,7 @@ def run_evaluation(
                     text=criterion_text,
                     score=er["score"],
                     explanation=er["explanation"],
+                    dag_score=er.get("dag_score"),
                 )
             )
 
