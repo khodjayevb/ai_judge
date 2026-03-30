@@ -274,22 +274,55 @@ def serve_report(filename):
 def api_redteam():
     data = request.json
     role = data.get("role", config.EVAL_ROLE)
+    model = data.get("model", "")
+    prompt_source = data.get("prompt_source", "local")
     job_id = f"redteam_{role}_{len(_jobs)}"
     _jobs[job_id] = {"status": "running", "progress": 0, "total": 1, "current_test": "Attacking...", "result": None}
 
     def _run():
         try:
             from evaluators.red_team import run_red_team, generate_red_team_report
+            from evaluators.llm_client import _client_cache
+
+            # Apply overrides
+            original_model = config.TARGET_MODEL
+            original_deployment = config.TARGET_DEPLOYMENT
+            original_prompt_src = config.TARGET_SYSTEM_PROMPT
+            if model:
+                config.TARGET_MODEL = model
+                config.TARGET_DEPLOYMENT = model
+            config.TARGET_SYSTEM_PROMPT = prompt_source
+            _client_cache.clear()
+
             SYSTEM_PROMPT, META = get_prompt(role)
 
             results = run_red_team(
                 system_prompt=SYSTEM_PROMPT,
                 role_slug=role,
             )
+
+            # Restore
+            config.TARGET_MODEL = original_model
+            config.TARGET_DEPLOYMENT = original_deployment
+            config.TARGET_SYSTEM_PROMPT = original_prompt_src
+            _client_cache.clear()
             report_path = generate_red_team_report(
                 results,
                 output_path=f"reports/red_team_{role}.html",
             )
+
+            # Log to history table
+            from results_db import log_red_team_run
+            log_red_team_run(
+                results=results,
+                role=role,
+                model=model or config.get_model_display_name(),
+                provider=config.TARGET_PROVIDER,
+                mode=config.MODE,
+                prompt_source=prompt_source,
+                report_path=report_path,
+            )
+
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["progress"] = 1
             _jobs[job_id]["result"] = {
@@ -548,6 +581,27 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             {% endfor %}
           </select>
         </div>
+        <div class="form-group">
+          <label>Model</label>
+          <select id="rtModel">
+            <option value="">Default ({{ config.TARGET_MODEL }})</option>
+            <option value="gpt-4o">gpt-4o</option>
+            <option value="gpt-4o-mini">gpt-4o-mini</option>
+            <option value="gpt-4.1">gpt-4.1</option>
+            <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+            <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+            <option value="claude-opus-4-20250514">Claude Opus 4</option>
+            <option value="custom">Custom...</option>
+          </select>
+          <input type="text" id="rtModelCustom" placeholder="Enter model name" style="display:none;margin-top:0.3rem">
+        </div>
+        <div class="form-group">
+          <label>System Prompt</label>
+          <select id="rtPrompt">
+            <option value="local">Local (from codebase)</option>
+            <option value="none">None (test deployed model)</option>
+          </select>
+        </div>
         <div class="form-group" style="flex:0">
           <label>&nbsp;</label>
           <button class="btn" style="background:var(--red);color:#fff" id="btnRedTeam" onclick="runRedTeam()">Run Red Team Assessment</button>
@@ -651,6 +705,8 @@ function runEval() {
 // Run comparison
 function runRedTeam() {
   const role = document.getElementById('rtRole').value;
+  const model = getModel('rtModel');
+  const prompt = document.getElementById('rtPrompt').value;
   document.getElementById('btnRedTeam').disabled = true;
   showProgress('rt');
   document.getElementById('rtBar').style.width = '30%';
@@ -658,7 +714,7 @@ function runRedTeam() {
   fetch('/api/redteam', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({role})
+    body: JSON.stringify({role, model, prompt_source: prompt})
   }).then(r => r.json()).then(d => pollJob(d.job_id, 'rt'));
 }
 

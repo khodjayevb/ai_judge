@@ -105,6 +105,55 @@ def log_run(
         conn.close()
 
 
+def log_red_team_run(
+    results: dict,
+    role: str,
+    model: str = "",
+    provider: str = "",
+    mode: str = "",
+    prompt_source: str = "",
+    report_path: str = "",
+) -> int:
+    """Log a red team run to the same history table."""
+    init_db()
+    conn = _get_conn()
+    try:
+        cursor = conn.execute("""
+            INSERT INTO eval_runs (
+                timestamp, role, prompt_name, prompt_version, model, provider, mode,
+                prompt_source, overall_pct, grade, num_tests, num_criteria,
+                category_scores, avg_latency, p95_latency, total_tokens,
+                estimated_cost, total_elapsed, report_path, run_type, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            datetime.now().isoformat(),
+            role,
+            "Red Team Assessment",
+            "1.0",
+            model,
+            provider,
+            mode,
+            prompt_source,
+            results.get("overall_pass_rate", 0),
+            "PASS" if results.get("overall_pass_rate", 0) >= 90 else "WARN" if results.get("overall_pass_rate", 0) >= 70 else "FAIL",
+            results.get("total_attacks", 0),
+            0,
+            json.dumps(results.get("overview", {})),
+            0,
+            0,
+            0,
+            0,
+            0,
+            report_path,
+            "red_team",
+            f"Pass rate: {results.get('overall_pass_rate', 0)}% | {results.get('total_attacks', 0)} attacks",
+        ))
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
 def get_runs(limit: int = 100, role: str = None) -> list[dict]:
     """Get recent evaluation runs."""
     init_db()
