@@ -1,6 +1,7 @@
 openai>=1.0.0
 rich>=13.0.0
 deepeval>=1.0.0
+deepteam>=0.1.0
 flask>=3.0.0
 
 # Optional providers (install only what you need)

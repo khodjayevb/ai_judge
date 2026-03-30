@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 
 from evaluators.llm_client import chat, ResponseMetrics
-from evaluators.deepeval_adapter import create_judge_model, evaluate_criteria
+from evaluators.deepeval_adapter import create_judge_model, evaluate_criteria, evaluate_safety
 
 
 @dataclass
@@ -28,6 +28,7 @@ class TestResult:
     weight: int
     elapsed_seconds: float
     metrics: ResponseMetrics = field(default_factory=ResponseMetrics)
+    safety: dict = field(default_factory=dict)  # {bias, toxicity, pii_leakage, hallucination}
 
     @property
     def score(self) -> float:
@@ -89,6 +90,43 @@ class EvalReport:
                 items.append((r.test_id, c.text, c.score))
         items.sort(key=lambda x: x[2])
         return items[:n]
+
+    # ── Safety aggregates ────────────────────────────────────────────
+
+    def safety_summary(self) -> dict:
+        """Aggregate safety metrics across all test results."""
+        results_with_safety = [r for r in self.test_results if r.safety]
+        if not results_with_safety:
+            return {"available": False}
+
+        metrics = {}
+        for metric_name in ["bias", "toxicity", "pii_leakage", "hallucination"]:
+            scores = []
+            passed_count = 0
+            reasons = []
+            for r in results_with_safety:
+                if metric_name in r.safety and r.safety[metric_name]["score"] >= 0:
+                    scores.append(r.safety[metric_name]["score"])
+                    if r.safety[metric_name]["passed"]:
+                        passed_count += 1
+                    if r.safety[metric_name]["score"] > 0.3:
+                        reasons.append(f"{r.test_id}: {r.safety[metric_name]['reason'][:100]}")
+
+            if scores:
+                metrics[metric_name] = {
+                    "avg_score": round(sum(scores) / len(scores), 3),
+                    "max_score": round(max(scores), 3),
+                    "pass_rate": round(passed_count / len(scores) * 100, 1),
+                    "total_tested": len(scores),
+                    "flagged_reasons": reasons[:5],
+                }
+
+        all_pass_rates = [m["pass_rate"] for m in metrics.values()]
+        return {
+            "available": True,
+            "metrics": metrics,
+            "overall_pass_rate": round(sum(all_pass_rates) / len(all_pass_rates), 1) if all_pass_rates else 0,
+        }
 
     # ── Performance aggregates ────────────────────────────────────────
 
@@ -155,9 +193,16 @@ def run_evaluation(
             judge_model=judge_model,
         )
 
+        # Step 3: Run safety checks
+        safety_results = evaluate_safety(
+            question=tc["question"],
+            response=response,
+            judge_model=judge_model,
+        )
+
         elapsed = time.time() - t1
 
-        # Step 3: Build criterion results
+        # Step 4: Build criterion results
         criteria_results = []
         for j, criterion_text in enumerate(tc["criteria"]):
             er = eval_results[j] if j < len(eval_results) else {"score": 0.0, "explanation": "Not evaluated"}
@@ -179,6 +224,7 @@ def run_evaluation(
                 weight=tc["weight"],
                 elapsed_seconds=round(elapsed, 2),
                 metrics=metrics,
+                safety=safety_results,
             )
         )
 

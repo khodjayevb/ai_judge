@@ -270,6 +270,44 @@ def serve_report(filename):
     return send_from_directory("reports", filename)
 
 
+@app.route("/api/redteam", methods=["POST"])
+def api_redteam():
+    data = request.json
+    role = data.get("role", config.EVAL_ROLE)
+    job_id = f"redteam_{role}_{len(_jobs)}"
+    _jobs[job_id] = {"status": "running", "progress": 0, "total": 1, "current_test": "Attacking...", "result": None}
+
+    def _run():
+        try:
+            from evaluators.red_team import run_red_team, generate_red_team_report
+            SYSTEM_PROMPT, META = get_prompt(role)
+
+            results = run_red_team(
+                system_prompt=SYSTEM_PROMPT,
+                role_slug=role,
+            )
+            report_path = generate_red_team_report(
+                results,
+                output_path=f"reports/red_team_{role}.html",
+            )
+            _jobs[job_id]["status"] = "done"
+            _jobs[job_id]["progress"] = 1
+            _jobs[job_id]["result"] = {
+                "overall_pass_rate": results["overall_pass_rate"],
+                "total_attacks": results["total_attacks"],
+                "overview": results["overview"],
+                "report_url": f"/reports/red_team_{role}.html",
+            }
+        except Exception as e:
+            _jobs[job_id]["status"] = "error"
+            _jobs[job_id]["result"] = {"error": str(e)}
+
+    thread = threading.Thread(target=_run)
+    thread.daemon = True
+    thread.start()
+    return jsonify({"job_id": job_id})
+
+
 # ══════════════════════════════════════════════════════════════════════════
 
 DASHBOARD_HTML = r"""<!DOCTYPE html>
@@ -365,6 +403,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div class="tabs">
     <div class="tab active" onclick="switchTab('eval')">Run Evaluation</div>
     <div class="tab" onclick="switchTab('compare')">A/B Comparison</div>
+    <div class="tab" onclick="switchTab('redteam')">Red Team</div>
   </div>
 
   <!-- ═══ EVALUATION TAB ═══ -->
@@ -492,6 +531,36 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- ═══ RED TEAM TAB ═══ -->
+  <div class="tab-content" id="tab-redteam">
+    <div class="panel">
+      <div class="panel-title">Red Team — Adversarial Security Testing</div>
+      <p style="color:var(--text2);margin-bottom:1rem;font-size:0.9rem">
+        Tests AI assistant resistance to prompt injection, PHI leakage attempts, encoding attacks, and bias probing.
+        Per DCRI TEAM-004: <em>"Execute prompt injection test suite; verify zero PHI leakage."</em>
+      </p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Role to Attack</label>
+          <select id="rtRole">
+            {% for r in roles %}
+            <option value="{{ r.slug }}">{{ r.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="flex:0">
+          <label>&nbsp;</label>
+          <button class="btn" style="background:var(--red);color:#fff" id="btnRedTeam" onclick="runRedTeam()">Run Red Team Assessment</button>
+        </div>
+      </div>
+      <div class="progress-area" id="rtProgress">
+        <div class="progress-bar-wrap"><div class="progress-bar" id="rtBar" style="width:0%"></div></div>
+        <div class="progress-text" id="rtText">Running adversarial attacks...</div>
+      </div>
+      <div class="result-flash" id="rtResult"></div>
+    </div>
+  </div>
+
   <!-- ═══ HISTORY ═══ -->
   <h2>Evaluation History</h2>
   <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem">
@@ -580,6 +649,19 @@ function runEval() {
 }
 
 // Run comparison
+function runRedTeam() {
+  const role = document.getElementById('rtRole').value;
+  document.getElementById('btnRedTeam').disabled = true;
+  showProgress('rt');
+  document.getElementById('rtBar').style.width = '30%';
+
+  fetch('/api/redteam', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({role})
+  }).then(r => r.json()).then(d => pollJob(d.job_id, 'rt'));
+}
+
 function runComparison() {
   const role = document.getElementById('cmpRole').value;
   document.getElementById('btnCompare').disabled = true;
@@ -636,7 +718,23 @@ function showResult(job, prefix) {
   flash.className = 'result-flash active success';
   const r = job.result;
 
-  if (r.delta !== undefined) {
+  if (r.total_attacks !== undefined) {
+    // Red team result
+    const color = r.overall_pass_rate >= 90 ? 'var(--green)' : r.overall_pass_rate >= 70 ? 'var(--yellow)' : 'var(--red)';
+    const vulns = Object.entries(r.overview || {}).map(([k,v]) =>
+      `<span style="margin-right:1rem"><strong>${k}:</strong> <span style="color:${v.pass_rate>=90?'var(--green)':v.pass_rate>=70?'var(--yellow)':'var(--red)'}">${v.pass_rate}%</span> (${v.passed}/${v.total})</span>`
+    ).join('');
+    flash.innerHTML = `
+      <div style="display:flex;align-items:center;gap:2rem;flex-wrap:wrap">
+        <div style="text-align:center">
+          <div style="font-size:2.5rem;font-weight:800;color:${color}">${r.overall_pass_rate}%</div>
+          <div style="color:var(--text2)">Pass Rate</div>
+          <div style="color:var(--text2);font-size:0.8rem">${r.total_attacks} attacks</div>
+        </div>
+        <div style="font-size:0.9rem">${vulns}</div>
+        <a href="${r.report_url}" target="_blank" class="result-link">View Full Report &#8594;</a>
+      </div>`;
+  } else if (r.delta !== undefined) {
     const color = r.delta > 0 ? 'var(--green)' : 'var(--red)';
     flash.innerHTML = `
       <div style="display:flex;align-items:center;gap:2rem;flex-wrap:wrap">

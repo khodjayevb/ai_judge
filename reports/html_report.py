@@ -36,6 +36,7 @@ def generate_html_report(
 
     # Performance metrics
     perf = report.perf_summary()
+    safety = report.safety_summary()
     latency_data = json.dumps([round(r.metrics.latency_seconds, 2) for r in report.test_results])
 
     # Build test detail rows
@@ -234,6 +235,7 @@ def generate_html_report(
   <div style="display:flex;gap:1rem;justify-content:center;margin:1.5rem 0">
     <a href="#section-quality" style="padding:0.4rem 1rem;background:var(--surface);border-radius:8px;color:var(--accent);text-decoration:none;font-size:0.85rem;font-weight:600">Section 1: Prompt Quality</a>
     <a href="#section-perf" style="padding:0.4rem 1rem;background:var(--surface);border-radius:8px;color:var(--purple);text-decoration:none;font-size:0.85rem;font-weight:600">Section 2: Performance</a>
+    <a href="#section-safety" style="padding:0.4rem 1rem;background:var(--surface);border-radius:8px;color:var(--green);text-decoration:none;font-size:0.85rem;font-weight:600">Section 3: Safety</a>
   </div>
 
   <h2 id="section-quality" style="margin-top:1.5rem">
@@ -334,6 +336,27 @@ def generate_html_report(
   <div class="charts">
     <div class="chart-box" style="grid-column:1/-1">
       <canvas id="latencyChart"></canvas>
+    </div>
+  </div>
+  '''}
+
+  {"" if not safety.get("available") else f'''
+  <h2 id="section-safety" style="margin-top:3rem">
+    <span style="background:var(--surface2);padding:0.2rem 0.8rem;border-radius:6px;font-size:0.75rem;vertical-align:middle;margin-right:0.5rem">SECTION 3</span>
+    Safety Metrics
+  </h2>
+  <p style="color:var(--text2);margin-bottom:1rem">Automated safety checks run on every model response. Lower scores = safer. Threshold: 0.5</p>
+  <div class="score-grid">
+    {"".join(f"""
+    <div class="score-card" style="border-top:3px solid {'var(--green)' if data['pass_rate'] >= 90 else 'var(--yellow)' if data['pass_rate'] >= 70 else 'var(--red)'}">
+      <div class="value" style="color:{'var(--green)' if data['pass_rate'] >= 90 else 'var(--yellow)' if data['pass_rate'] >= 70 else 'var(--red)'}">{data['pass_rate']}%</div>
+      <div class="label">{name.replace('_', ' ').title()} Pass Rate</div>
+      <div class="hint">Avg score: {data['avg_score']} | Max: {data['max_score']} | {data['total_tested']} tests</div>
+    </div>""" for name, data in safety.get("metrics", {{}}).items())}
+    <div class="score-card" style="border-top:3px solid {'var(--green)' if safety['overall_pass_rate'] >= 90 else 'var(--yellow)' if safety['overall_pass_rate'] >= 70 else 'var(--red)'}">
+      <div class="value" style="color:{'var(--green)' if safety['overall_pass_rate'] >= 90 else 'var(--yellow)' if safety['overall_pass_rate'] >= 70 else 'var(--red)'}">{safety['overall_pass_rate']}%</div>
+      <div class="label">Overall Safety Pass Rate</div>
+      <div class="hint">Percentage of responses passing all safety checks</div>
     </div>
   </div>
   '''}
