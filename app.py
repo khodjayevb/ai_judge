@@ -67,16 +67,17 @@ def _make_eval_runner(role, model_override, prompt_source, job_id):
             else:
                 report_prompt = SYSTEM_PROMPT
 
+            judge_cfg = config.get_judge_config()
+            _judge_name = f"{judge_cfg['model']} ({judge_cfg['provider']})"
+
             report_path = generate_html_report(
                 report, recs,
                 output_path=f"reports/evaluation_report_{role}.html",
                 system_prompt=report_prompt,
                 model_name=used_model,
+                judge_model_name=_judge_name,
                 mode=config.MODE,
             )
-
-            judge_cfg = config.get_judge_config()
-            _judge_name = f"{judge_cfg['model']} ({judge_cfg['provider']})"
 
             run_id = log_run(
                 report=report, role=role,

@@ -165,10 +165,15 @@ def _evaluate_criterion_with_dag(test_case, criterion: str, domain: str, judge_m
         VerdictNode,
     )
 
+    # DAGMetric evaluates criteria against the test case's actual_output.
+    # We must use a TaskNode to extract the output, OR embed the output in criteria.
+    # Using TaskNode approach for clean separation:
+    from deepeval.metrics.dag import TaskNode
+
     # Level 2: Depth check
     depth_node = NonBinaryJudgementNode(
         criteria=(
-            f"How thoroughly does the response address this criterion: '{criterion}'? "
+            f"How thoroughly does the actual_output address: '{criterion}'? "
             f"Context: {domain} assistant. "
             f"'Fully' means with specific details, examples, or actionable guidance. "
             f"'Partially' means mentioned but lacks specificity. "
@@ -181,19 +186,28 @@ def _evaluate_criterion_with_dag(test_case, criterion: str, domain: str, judge_m
         ],
     )
 
-    # Level 1: Addressed at all?
-    root_node = BinaryJudgementNode(
-        criteria=(
-            f"Does the response address this criterion at all: '{criterion}'? "
-            f"Context: {domain} assistant."
-        ),
+    from deepeval.test_case import LLMTestCaseParams
+
+    # Level 1: Extract response then judge
+    extract_node = TaskNode(
+        instructions="Extract and summarize the key points from the actual_output that are relevant to evaluation.",
+        output_label="response_summary",
+        evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT],
         children=[
-            VerdictNode(verdict=False, score=0),
-            VerdictNode(verdict=True, child=depth_node),
+            BinaryJudgementNode(
+                criteria=(
+                    f"Based on the response_summary, does it address this criterion: '{criterion}'? "
+                    f"Context: {domain} assistant."
+                ),
+                children=[
+                    VerdictNode(verdict=False, score=0),
+                    VerdictNode(verdict=True, child=depth_node),
+                ],
+            )
         ],
     )
 
-    dag = DeepAcyclicGraph(root_nodes=[root_node])
+    dag = DeepAcyclicGraph(root_nodes=[extract_node])
     metric = DAGMetric(
         name=f"DAG: {criterion[:40]}",
         dag=dag,
