@@ -13,10 +13,20 @@ The generated test cases are saved as JSON and can be reviewed, edited,
 then imported into test_suites/.
 """
 
+import os
 import sys
 import json
 import argparse
 from pathlib import Path
+
+# Fix Windows cp1252 — DeepEval Synthesizer prints emoji via Rich
+if sys.platform == "win32":
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -54,8 +64,26 @@ def get_synthesizer_model():
         return judge["model"]
 
 
+def _patch_rich_for_windows():
+    """Patch Rich console to handle emoji on Windows cp1252."""
+    if sys.platform != "win32":
+        return
+    try:
+        import rich.console
+        _orig_print = rich.console.Console.print
+        def _safe_print(self, *args, **kwargs):
+            try:
+                _orig_print(self, *args, **kwargs)
+            except UnicodeEncodeError:
+                pass
+        rich.console.Console.print = _safe_print
+    except Exception:
+        pass
+
+
 def generate_from_docs(doc_paths: list[str], count: int = 10) -> list[dict]:
     """Generate test cases from document files (.pdf, .md, .txt, .docx)."""
+    _patch_rich_for_windows()
     from deepeval.synthesizer import Synthesizer, ContextConstructionConfig
 
     console.print(f"[cyan]Generating from {len(doc_paths)} documents...[/]")
@@ -82,6 +110,7 @@ def generate_from_docs(doc_paths: list[str], count: int = 10) -> list[dict]:
 
 def generate_from_prompt(role_slug: str, count: int = 10) -> list[dict]:
     """Generate test cases from a role's system prompt text."""
+    _patch_rich_for_windows()
     from deepeval.synthesizer import Synthesizer
     from prompts.registry import get_prompt
 
