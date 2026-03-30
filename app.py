@@ -279,9 +279,9 @@ def api_generate():
 
     def _run():
         try:
-            from generate_tests import generate_from_prompt, save_generated_tests
-            test_cases = generate_from_prompt(role, count=count)
-            path = save_generated_tests(test_cases, f"generated/{role}_tests.json")
+            from generate_tests import generate_from_role, save_tests
+            test_cases = generate_from_role(role, count=count)
+            path = save_tests(test_cases, f"generated/{role}_tests.json")
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["progress"] = 1
             _jobs[job_id]["result"] = {

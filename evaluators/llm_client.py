@@ -81,7 +81,7 @@ def _create_client(cfg: dict):
             r = client.chat.completions.create(
                 model=model, messages=msgs,
                 temperature=kw.get("temperature", config.TEMPERATURE),
-                max_tokens=config.MAX_TOKENS,
+                max_completion_tokens=config.MAX_TOKENS,
             )
             latency = time.perf_counter() - t0
             text = r.choices[0].message.content
@@ -146,7 +146,7 @@ def _create_client(cfg: dict):
             r = client.chat.completions.create(
                 model=deployment, messages=msgs,
                 temperature=kw.get("temperature", config.TEMPERATURE),
-                max_tokens=config.MAX_TOKENS,
+                max_completion_tokens=config.MAX_TOKENS,
             )
             latency = time.perf_counter() - t0
             text = r.choices[0].message.content
@@ -180,7 +180,7 @@ def _create_client(cfg: dict):
             r = client.chat.completions.create(
                 model=model, messages=msgs,
                 temperature=kw.get("temperature", config.TEMPERATURE),
-                max_tokens=config.MAX_TOKENS,
+                max_completion_tokens=config.MAX_TOKENS,
             )
             latency = time.perf_counter() - t0
             text = r.choices[0].message.content
