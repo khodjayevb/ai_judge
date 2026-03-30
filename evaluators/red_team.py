@@ -104,10 +104,14 @@ def run_red_team(
     if on_progress:
         on_progress("Running red team assessment...")
 
-    # Disable deepteam's Rich progress bars to avoid cp1252 emoji crashes on
-    # Windows.  The env-var check lives in deepteam.utils and is read once at
-    # import time, so we must set it before the first call.
-    os.environ["DEEPTEAM_SHOW_PROGRESS"] = "false"
+    # Monkey-patch ALL RedTeamer print methods to avoid Rich emoji crashes on
+    # Windows cp1252. DeepTeam has multiple methods that print with emojis:
+    #   _print_risk_assessment (line 479) — prints results table
+    #   _post_risk_assessment (line 481) — prints "deepteam login" promo
+    # Both crash AFTER assessment completes but BEFORE returning, losing results.
+    from deepteam.red_teamer.red_teamer import RedTeamer
+    RedTeamer._print_risk_assessment = lambda self, *a, **kw: None
+    RedTeamer._post_risk_assessment = lambda self, *a, **kw: None
 
     risk_assessment = None
     last_error = None
@@ -120,11 +124,6 @@ def run_red_team(
             simulator_model=judge_model,
             evaluation_model=judge_model,
         )
-    except UnicodeEncodeError:
-        # Rich crashed during final table printing, but the assessment object
-        # was already constructed — it lives on the RedTeamer instance.  We
-        # cannot recover it here, so fall through to the None check below.
-        pass
     except Exception as exc:
         last_error = str(exc)
 
@@ -192,16 +191,19 @@ def run_red_team(
                 **({"error": tc_error} if tc_error else {}),
             })
 
-        # Calculate overview per vulnerability
+        # Calculate overview per vulnerability — exclude errored tests from scoring
         vuln_names = set(tc["vulnerability"] for tc in test_cases)
         for vuln_name in vuln_names:
             vuln_cases = [tc for tc in test_cases if tc["vulnerability"] == vuln_name]
-            passed = sum(1 for tc in vuln_cases if tc["passed"])
+            valid_cases = [tc for tc in vuln_cases if not tc.get("error")]
+            errored = len(vuln_cases) - len(valid_cases)
+            passed = sum(1 for tc in valid_cases if tc["passed"])
             overview[vuln_name] = {
-                "pass_rate": round(passed / len(vuln_cases) * 100, 1) if vuln_cases else 0,
-                "total": len(vuln_cases),
+                "pass_rate": round(passed / len(valid_cases) * 100, 1) if valid_cases else -1,
+                "total": len(valid_cases),
                 "passed": passed,
-                "failed": len(vuln_cases) - passed,
+                "failed": len(valid_cases) - passed,
+                "errored": errored,
             }
     except Exception as e:
         overview["error"] = {"pass_rate": 0, "total": 0, "passed": 0, "failed": 0, "error": str(e)}
@@ -212,10 +214,12 @@ def run_red_team(
         "model": config.get_model_display_name(),
         "overview": overview,
         "test_cases": test_cases,
-        "total_attacks": len(test_cases),
+        "total_attacks": len([tc for tc in test_cases if not tc.get("error")]),
+        "total_errored": len([tc for tc in test_cases if tc.get("error")]),
         "overall_pass_rate": round(
-            sum(v["pass_rate"] for v in overview.values()) / len(overview), 1
-        ) if overview else 0,
+            sum(v["pass_rate"] for v in overview.values() if v["pass_rate"] >= 0) /
+            max(len([v for v in overview.values() if v["pass_rate"] >= 0]), 1), 1
+        ),
     }
 
 
@@ -255,19 +259,36 @@ def generate_red_team_report(results: dict, output_path: str = "reports/red_team
     # Overview cards
     overview_html = ""
     for vuln, data in overview.items():
-        color = "#22c55e" if data["pass_rate"] >= 90 else "#eab308" if data["pass_rate"] >= 70 else "#ef4444"
+        pr = data["pass_rate"]
+        if pr < 0:
+            color = "#64748b"
+            label = "ERROR"
+            detail = f"{data.get('errored', 0)} attacks failed to run"
+        else:
+            color = "#22c55e" if pr >= 90 else "#eab308" if pr >= 70 else "#ef4444"
+            label = f"{pr}%"
+            detail = f"{data['passed']}/{data['total']} passed"
+            if data.get("errored"):
+                detail += f" | {data['errored']} errored"
         overview_html += f"""
         <div style="background:#1e293b;border-radius:12px;padding:1.25rem;text-align:center;border-top:3px solid {color}">
-          <div style="font-size:2rem;font-weight:800;color:{color}">{data['pass_rate']}%</div>
+          <div style="font-size:2rem;font-weight:800;color:{color}">{label}</div>
           <div style="color:#94a3b8;font-size:0.85rem">{html_mod.escape(vuln)}</div>
-          <div style="color:#64748b;font-size:0.75rem;margin-top:0.3rem">{data['passed']}/{data['total']} passed</div>
+          <div style="color:#64748b;font-size:0.75rem;margin-top:0.3rem">{detail}</div>
         </div>"""
 
     # Test case rows
     tc_html = ""
     for tc in test_cases:
-        status_color = "#22c55e" if tc["passed"] else "#ef4444"
-        status_text = "PASSED" if tc["passed"] else "FAILED"
+        if tc.get("error"):
+            status_color = "#64748b"
+            status_text = "ERROR"
+        elif tc["passed"]:
+            status_color = "#22c55e"
+            status_text = "PASSED"
+        else:
+            status_color = "#ef4444"
+            status_text = "FAILED"
         tc_html += f"""
         <div style="background:#1e293b;border-radius:12px;padding:1rem;margin-bottom:0.75rem;border-left:4px solid {status_color}">
           <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem">
@@ -276,12 +297,14 @@ def generate_red_team_report(results: dict, output_path: str = "reports/red_team
             <span style="margin-left:auto;color:{status_color};font-weight:700;font-size:0.85rem">{status_text}</span>
           </div>
           <details>
-            <summary style="cursor:pointer;color:#38bdf8;font-size:0.85rem">View attack & response</summary>
+            <summary style="cursor:pointer;color:#38bdf8;font-size:0.85rem">View details</summary>
             <div style="margin-top:0.5rem">
+              {"<div style='background:#1c1917;padding:0.75rem;border-radius:8px;font-size:0.8rem;margin-bottom:0.5rem;color:#f87171;border:1px solid #7f1d1d'><strong>Error:</strong> " + html_mod.escape(tc.get('error','')) + "</div>" if tc.get('error') else ""}
               <div style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.25rem"><strong>Attack:</strong></div>
-              <div style="background:#0f172a;padding:0.75rem;border-radius:8px;font-size:0.8rem;margin-bottom:0.5rem;word-break:break-word">{html_mod.escape(tc['input'])}</div>
+              <div style="background:#0f172a;padding:0.75rem;border-radius:8px;font-size:0.8rem;margin-bottom:0.5rem;word-break:break-word">{html_mod.escape(tc['input']) or '<em style="color:#64748b">No input captured</em>'}</div>
               <div style="font-size:0.8rem;color:#94a3b8;margin-bottom:0.25rem"><strong>Response:</strong></div>
-              <div style="background:#0f172a;padding:0.75rem;border-radius:8px;font-size:0.8rem;word-break:break-word">{html_mod.escape(tc['output'])}</div>
+              <div style="background:#0f172a;padding:0.75rem;border-radius:8px;font-size:0.8rem;word-break:break-word">{html_mod.escape(tc['output']) or '<em style="color:#64748b">No response captured</em>'}</div>
+              {f"<div style='font-size:0.8rem;color:#94a3b8;margin-top:0.5rem'><strong>Reason:</strong> {html_mod.escape(tc.get('reason',''))}</div>" if tc.get('reason') else ""}
             </div>
           </details>
         </div>"""
@@ -317,7 +340,7 @@ def generate_red_team_report(results: dict, output_path: str = "reports/red_team
         <div style="font-size:0.8rem;color:#94a3b8">Pass Rate</div>
       </div>
     </div>
-    <div style="color:#94a3b8;margin-top:0.5rem">{results['total_attacks']} adversarial attacks tested</div>
+    <div style="color:#94a3b8;margin-top:0.5rem">{results['total_attacks']} attacks tested{f" | {results.get('total_errored', 0)} errored (excluded from score)" if results.get('total_errored') else ''}</div>
   </div>
 
   <h2>Vulnerability Overview</h2>
