@@ -436,7 +436,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <h1>AI Evaluation Framework</h1>
   <p class="subtitle">Evaluate, compare, and track AI system prompts</p>
   <div style="display:flex;gap:1rem;justify-content:center;margin-bottom:1.5rem;flex-wrap:wrap">
-    <span style="background:var(--surface);padding:0.4rem 1rem;border-radius:8px;font-size:0.85rem">
+    <span id="headerTarget" style="background:var(--surface);padding:0.4rem 1rem;border-radius:8px;font-size:0.85rem">
       <span style="color:var(--text2)">Target:</span> <strong>{{ config.TARGET_MODEL }}</strong> <span style="color:var(--text2)">({{ config.TARGET_PROVIDER }})</span>
     </span>
     <span style="background:var(--surface);padding:0.4rem 1rem;border-radius:8px;font-size:0.85rem">
@@ -685,15 +685,32 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelector(`.tab-content#tab-${tab}`).classList.add('active');
   event.target.classList.add('active');
+  setTimeout(updateHeaderTarget, 50);
 }
 
-// Custom model inputs
+// Custom model inputs + update header
+const defaultModel = '{{ config.TARGET_MODEL }}';
+const defaultProvider = '{{ config.TARGET_PROVIDER }}';
+
 document.querySelectorAll('select[id*=Model]').forEach(sel => {
   sel.addEventListener('change', () => {
     const custom = document.getElementById(sel.id + 'Custom');
     if (custom) custom.style.display = sel.value === 'custom' ? 'block' : 'none';
+    updateHeaderTarget();
   });
 });
+
+function updateHeaderTarget() {
+  // Show the currently selected model in the active tab
+  const activeTab = document.querySelector('.tab-content.active');
+  if (!activeTab) return;
+  const modelSel = activeTab.querySelector('select[id*=Model]');
+  if (!modelSel) return;
+  const model = getModel(modelSel.id);
+  const display = model || defaultModel;
+  document.getElementById('headerTarget').innerHTML =
+    `<span style="color:var(--text2)">Target:</span> <strong>${display}</strong> <span style="color:var(--text2)">(${defaultProvider})</span>`;
+}
 
 function getModel(selectId) {
   const sel = document.getElementById(selectId);
