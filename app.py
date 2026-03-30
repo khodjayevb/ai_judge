@@ -299,6 +299,89 @@ def api_generate():
     return jsonify({"job_id": job_id})
 
 
+@app.route("/api/save-test-suite", methods=["POST"])
+def api_save_test_suite():
+    """Save generated tests as a Python test suite file."""
+    data = request.json
+    role = data.get("role", "generated")
+    test_cases = data.get("test_cases", [])
+    merge = data.get("merge", False)
+
+    import tempfile, json as _json
+    tmp = Path(tempfile.mktemp(suffix=".json"))
+    tmp.write_text(_json.dumps(test_cases), encoding="utf-8")
+
+    try:
+        from import_tests import json_to_test_suite, merge_into_existing
+        if merge:
+            result = merge_into_existing(str(tmp), role)
+        else:
+            result = json_to_test_suite(str(tmp), role_slug=role, suite_name=f"{role}_generated")
+        tmp.unlink()
+        return jsonify({"success": True, "path": result})
+    except Exception as e:
+        tmp.unlink(missing_ok=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/eval-generated", methods=["POST"])
+def api_eval_generated():
+    """Run evaluation using generated test cases (not saved to file)."""
+    data = request.json
+    role = data.get("role", config.EVAL_ROLE)
+    test_cases = data.get("test_cases", [])
+    job_id = f"eval_gen_{role}_{len(_jobs)}"
+    _jobs[job_id] = {"status": "running", "progress": 0, "total": len(test_cases), "current_test": "", "result": None}
+
+    def _run():
+        try:
+            from evaluators.scorer import run_evaluation
+            from evaluators.recommender import generate_recommendations
+            from reports.html_report import generate_html_report
+            from prompts.registry import get_prompt
+
+            SYSTEM_PROMPT, META = get_prompt(role)
+
+            def on_progress(current, total, test_id):
+                _jobs[job_id]["progress"] = current
+                _jobs[job_id]["current_test"] = test_id
+
+            report = run_evaluation(
+                system_prompt=SYSTEM_PROMPT, test_cases=test_cases,
+                prompt_name=META["name"], prompt_version=META["version"],
+                domain=META["domain"], role_slug=role, on_progress=on_progress,
+            )
+
+            recs = generate_recommendations(report)
+            judge_cfg = config.get_judge_config()
+
+            report_path = generate_html_report(
+                report, recs,
+                output_path=f"reports/eval_generated_{role}.html",
+                system_prompt=SYSTEM_PROMPT,
+                model_name=config.get_model_display_name(),
+                judge_model_name=f"{judge_cfg['model']} ({judge_cfg['provider']})",
+                mode=config.MODE,
+            )
+
+            _jobs[job_id]["status"] = "done"
+            _jobs[job_id]["result"] = {
+                "grade": report.grade,
+                "score": report.overall_pct,
+                "report_url": f"/reports/eval_generated_{role}.html",
+                "categories": report.category_scores(),
+                "perf": report.perf_summary(),
+            }
+        except Exception as e:
+            _jobs[job_id]["status"] = "error"
+            _jobs[job_id]["result"] = {"error": str(e)}
+
+    thread = threading.Thread(target=_run)
+    thread.daemon = True
+    thread.start()
+    return jsonify({"job_id": job_id})
+
+
 @app.route("/reports/<path:filename>")
 def serve_report(filename):
     return send_from_directory("reports", filename)
@@ -703,6 +786,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <div id="genTestList"></div>
         <div style="margin-top:1rem;display:flex;gap:0.5rem">
           <button class="btn" style="background:var(--surface2);color:var(--text)" onclick="downloadGenerated()">Download JSON</button>
+          <button class="btn btn-primary" onclick="saveAsTestSuite()">Save as Test Suite</button>
+          <button class="btn btn-purple" onclick="runEvalOnGenerated()">Run Evaluation on These</button>
         </div>
       </div>
     </div>
@@ -841,6 +926,35 @@ function downloadGenerated() {
   a.download = `generated_tests_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function saveAsTestSuite() {
+  if (!_generatedTests.length) return;
+  const role = document.getElementById('genRole').value;
+  fetch('/api/save-test-suite', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({role, test_cases: _generatedTests, merge: false})
+  }).then(r => r.json()).then(d => {
+    if (d.success) {
+      alert('Test suite saved to: ' + d.path + '\n\nIt will appear in the Role dropdown after restarting the dashboard.');
+    } else {
+      alert('Error: ' + d.error);
+    }
+  });
+}
+
+function runEvalOnGenerated() {
+  if (!_generatedTests.length) return;
+  const role = document.getElementById('genRole').value;
+  document.getElementById('genResult').className = 'result-flash active success';
+  document.getElementById('genResult').innerHTML = '<strong>Running evaluation on generated tests...</strong>';
+
+  fetch('/api/eval-generated', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({role, test_cases: _generatedTests})
+  }).then(r => r.json()).then(d => pollJob(d.job_id, 'gen'));
 }
 
 function runRedTeam() {
