@@ -170,19 +170,19 @@ def _evaluate_criterion_with_dag(test_case, criterion: str, domain: str, judge_m
     # Using TaskNode approach for clean separation:
     from deepeval.metrics.dag import TaskNode
 
-    # Level 2: Depth check
+    # Level 2: Depth check — calibrated to align closer to GEval
     depth_node = NonBinaryJudgementNode(
         criteria=(
-            f"How thoroughly does the actual_output address: '{criterion}'? "
+            f"How thoroughly does the response_summary address: '{criterion}'? "
             f"Context: {domain} assistant. "
-            f"'Fully' means with specific details, examples, or actionable guidance. "
-            f"'Partially' means mentioned but lacks specificity. "
-            f"'Barely' means vaguely referenced or only implied."
+            f"'Fully' = specific details, examples, standards, or actionable guidance given. "
+            f"'Partially' = topic mentioned with some relevant detail but not exhaustive. "
+            f"'Barely' = only implied or mentioned in passing without useful detail."
         ),
         children=[
             VerdictNode(verdict="Fully", score=10),
-            VerdictNode(verdict="Partially", score=6),
-            VerdictNode(verdict="Barely", score=3),
+            VerdictNode(verdict="Partially", score=7),
+            VerdictNode(verdict="Barely", score=4),
         ],
     )
 
