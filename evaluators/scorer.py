@@ -16,7 +16,8 @@ class CriterionResult:
     text: str
     score: float          # 0.0 - 1.0 (GEval)
     explanation: str
-    dag_score: float | None = None  # 0.0 - 1.0 (DAG, deterministic)
+    dag_score: float | None = None       # 0.0 - 1.0 (DAG, deterministic)
+    dag_dimensions: dict | None = None   # {name: {score, passed}} per dimension
 
 
 @dataclass
@@ -251,6 +252,7 @@ def run_evaluation(
                     score=er["score"],
                     explanation=er["explanation"],
                     dag_score=er.get("dag_score"),
+                    dag_dimensions=er.get("dag_dimensions"),
                 )
             )
 

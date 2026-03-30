@@ -134,10 +134,11 @@ def _evaluate_with_deepeval(question, response, criteria, domain, judge_model):
         except Exception as e:
             result["explanation"] = f"GEval error: {str(e)[:200]}"
 
-        # DAG (deterministic, reproducible)
+        # DAG (deterministic, decomposed dimensions)
         try:
-            dag_score = _evaluate_criterion_with_dag(test_case, criterion, domain, judge_model)
-            result["dag_score"] = dag_score
+            dag_result = _evaluate_criterion_with_dag(test_case, criterion, domain, judge_model)
+            result["dag_score"] = dag_result["score"]
+            result["dag_dimensions"] = dag_result["dimensions"]
         except Exception:
             pass  # DAG is supplementary — don't fail if it errors
 
@@ -145,78 +146,96 @@ def _evaluate_with_deepeval(question, response, criteria, domain, judge_model):
     return results
 
 
-def _evaluate_criterion_with_dag(test_case, criterion: str, domain: str, judge_model) -> float:
-    """Evaluate a single criterion using a DAG decision tree.
+# ── DAG Decomposed Evaluation ────────────────────────────────────────
 
-    Decision tree:
-      1. Is the criterion addressed at all? (Binary: Yes/No)
-         - No → score 0
-         - Yes → 2. How thoroughly?
-           2. Is it addressed with specific detail? (Non-binary: Fully/Partially/Barely)
-              - Fully (with examples, specifics) → score 10
-              - Partially (mentioned but lacks depth) → score 6
-              - Barely (vague reference) → score 3
+# The 4 dimensions we evaluate for every criterion
+DAG_DIMENSIONS = [
+    {
+        "name": "Addressed",
+        "criteria_template": "Does the response address this criterion at all: '{criterion}'? Context: {domain} assistant.",
+        "type": "binary",
+        "weight": 3,  # Most important — is it even mentioned?
+    },
+    {
+        "name": "Specificity",
+        "criteria_template": "Does the response provide specific details for: '{criterion}'? Examples: named services, version numbers, configuration values, concrete steps. Context: {domain} assistant.",
+        "type": "binary",
+        "weight": 3,
+    },
+    {
+        "name": "Actionability",
+        "criteria_template": "Does the response give actionable guidance (how-to steps, commands, code, architecture decisions) for: '{criterion}'? Or is it just a vague recommendation? Context: {domain} assistant.",
+        "type": "binary",
+        "weight": 2,
+    },
+    {
+        "name": "Accuracy",
+        "criteria_template": "Is the response technically correct and free of errors regarding: '{criterion}'? Context: {domain} assistant.",
+        "type": "binary",
+        "weight": 2,
+    },
+]
+
+
+def _evaluate_criterion_with_dag(test_case, criterion: str, domain: str, judge_model) -> dict:
+    """Evaluate a criterion across 4 decomposed dimensions using DAG.
+
+    Returns {score: float, dimensions: {name: {score, passed}}}.
+    Each dimension is a binary yes/no check, weighted and aggregated.
     """
     from deepeval.metrics import DAGMetric
     from deepeval.metrics.dag import (
         DeepAcyclicGraph,
         BinaryJudgementNode,
-        NonBinaryJudgementNode,
         VerdictNode,
+        TaskNode,
     )
-
-    # DAGMetric evaluates criteria against the test case's actual_output.
-    # We must use a TaskNode to extract the output, OR embed the output in criteria.
-    # Using TaskNode approach for clean separation:
-    from deepeval.metrics.dag import TaskNode
-
-    # Level 2: Depth check — calibrated to align closer to GEval
-    depth_node = NonBinaryJudgementNode(
-        criteria=(
-            f"How thoroughly does the response_summary address: '{criterion}'? "
-            f"Context: {domain} assistant. "
-            f"'Fully' = specific details, examples, standards, or actionable guidance given. "
-            f"'Partially' = topic mentioned with some relevant detail but not exhaustive. "
-            f"'Barely' = only implied or mentioned in passing without useful detail."
-        ),
-        children=[
-            VerdictNode(verdict="Fully", score=10),
-            VerdictNode(verdict="Partially", score=7),
-            VerdictNode(verdict="Barely", score=4),
-        ],
-    )
-
     from deepeval.test_case import LLMTestCaseParams
 
-    # Level 1: Extract response then judge
-    extract_node = TaskNode(
-        instructions="Extract and summarize the key points from the actual_output that are relevant to evaluation.",
-        output_label="response_summary",
-        evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT],
-        children=[
-            BinaryJudgementNode(
-                criteria=(
-                    f"Based on the response_summary, does it address this criterion: '{criterion}'? "
-                    f"Context: {domain} assistant."
-                ),
-                children=[
-                    VerdictNode(verdict=False, score=0),
-                    VerdictNode(verdict=True, child=depth_node),
-                ],
-            )
-        ],
-    )
+    dimensions = {}
+    total_weighted = 0
+    total_weight = 0
 
-    dag = DeepAcyclicGraph(root_nodes=[extract_node])
-    metric = DAGMetric(
-        name=f"DAG: {criterion[:40]}",
-        dag=dag,
-        model=judge_model,
-        threshold=0.5,
-        verbose_mode=False,
-    )
-    metric.measure(test_case)
-    return round(metric.score, 2)
+    for dim in DAG_DIMENSIONS:
+        criteria_text = dim["criteria_template"].format(criterion=criterion, domain=domain)
+
+        extract_node = TaskNode(
+            instructions="Summarize the key points from the actual_output relevant to the evaluation criterion.",
+            output_label="summary",
+            evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT],
+            children=[
+                BinaryJudgementNode(
+                    criteria=f"Based on the summary: {criteria_text}",
+                    children=[
+                        VerdictNode(verdict=False, score=0),
+                        VerdictNode(verdict=True, score=10),
+                    ],
+                )
+            ],
+        )
+
+        dag = DeepAcyclicGraph(root_nodes=[extract_node])
+        metric = DAGMetric(
+            name=f"DAG-{dim['name']}",
+            dag=dag,
+            model=judge_model,
+            threshold=0.5,
+            verbose_mode=False,
+        )
+
+        try:
+            metric.measure(test_case)
+            passed = metric.score >= 0.5
+            dimensions[dim["name"]] = {"score": round(metric.score, 2), "passed": passed}
+            total_weighted += (1.0 if passed else 0.0) * dim["weight"]
+        except Exception:
+            dimensions[dim["name"]] = {"score": 0.0, "passed": False}
+
+        total_weight += dim["weight"]
+
+    overall = round(total_weighted / total_weight, 2) if total_weight > 0 else 0.0
+
+    return {"score": overall, "dimensions": dimensions}
 
 
 # ══════════════════════════════════════════════════════════════════════════

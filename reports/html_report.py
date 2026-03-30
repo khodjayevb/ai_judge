@@ -141,9 +141,18 @@ def generate_html_report(
         for c in r.criteria_results:
             bar_color = _score_bar_color(c.score)
             dag_badge = ""
+            dag_dims_html = ""
             if c.dag_score is not None:
                 dag_color = _score_bar_color(c.dag_score)
                 dag_badge = f' <span style="background:{dag_color};color:#000;padding:0.1rem 0.3rem;border-radius:3px;font-size:0.65rem;font-weight:600;margin-left:0.3rem" title="DAG (deterministic) score">DAG: {c.dag_score:.0%}</span>'
+
+            if c.dag_dimensions:
+                dim_badges = ""
+                for dname, ddata in c.dag_dimensions.items():
+                    dc = "#22c55e" if ddata["passed"] else "#ef4444"
+                    icon = "Y" if ddata["passed"] else "N"
+                    dim_badges += f'<span style="background:{dc};color:#000;padding:0.1rem 0.35rem;border-radius:3px;font-size:0.6rem;font-weight:600;margin-right:0.2rem" title="{dname}: {"Pass" if ddata["passed"] else "Fail"}">{dname}: {icon}</span>'
+                dag_dims_html = f'<div style="margin-top:0.2rem">{dim_badges}</div>'
 
             criteria_html += f"""
             <div class="criterion-row">
@@ -152,7 +161,7 @@ def generate_html_report(
                     <div class="criterion-bar" style="width:{c.score*100}%;background:{bar_color}"></div>
                 </div>
                 <div class="criterion-score">{c.score:.0%}{dag_badge}</div>
-                <div class="criterion-explanation">{html.escape(c.explanation)}</div>
+                <div class="criterion-explanation">{html.escape(c.explanation)}{dag_dims_html}</div>
             </div>"""
 
         response_escaped = html.escape(r.response).replace("\n", "<br>")
