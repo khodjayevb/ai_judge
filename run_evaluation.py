@@ -156,11 +156,15 @@ def main():
     else:
         _report_prompt = SYSTEM_PROMPT
 
+    judge_cfg = config.get_judge_config()
+    _judge_display = f"{judge_cfg['model']} ({judge_cfg['provider']})"
+
     report_path = generate_html_report(
         report, recommendations,
         output_path=f"reports/evaluation_report_{role}.html",
         system_prompt=_report_prompt,
         model_name=config.get_model_display_name(),
+        judge_model_name=_judge_display,
         mode=config.MODE,
     )
     console.print(f"\n[bold green]Report saved to:[/] {report_path}")
@@ -170,6 +174,7 @@ def main():
     run_id = log_run(
         report=report, role=role,
         model=config.get_model_display_name(),
+        judge_model=_judge_display,
         provider=config.TARGET_PROVIDER,
         mode=config.MODE,
         prompt_source=prompt_source,

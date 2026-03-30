@@ -20,6 +20,7 @@ def generate_html_report(
     output_path: str = "reports/evaluation_report.html",
     system_prompt: str = "",
     model_name: str = "",
+    judge_model_name: str = "",
     mode: str = "",
 ) -> str:
     """Generate and save a beautiful HTML evaluation report."""
@@ -300,8 +301,8 @@ def generate_html_report(
     <p class="subtitle">{html.escape(report.prompt_name)} v{html.escape(report.prompt_version)}</p>
     <div class="meta">
       <span>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}</span>
-      <span>Model: {html.escape(model_name or 'demo')}</span>
-      <span>Mode: {html.escape(mode or 'demo')}</span>
+      <span>Target: {html.escape(model_name or 'demo')}</span>
+      <span>Judge: {html.escape(judge_model_name or model_name or 'demo')}</span>
       <span>Tests: {len(report.test_results)}</span>
       <span>Duration: {report.total_elapsed}s</span>
     </div>
@@ -316,9 +317,10 @@ def generate_html_report(
   <h2>Evaluation Configuration</h2>
   <div class="config-grid">
     <div class="config-card">
-      <h3>Target Model</h3>
+      <h3>Evaluation Setup</h3>
       <table class="config-table">
-        <tr><td class="config-label">Model</td><td>{html.escape(model_name or 'demo (pre-generated)')}</td></tr>
+        <tr><td class="config-label">Target Model</td><td>{html.escape(model_name or 'demo (pre-generated)')}</td></tr>
+        <tr><td class="config-label">Judge Model</td><td>{html.escape(judge_model_name or model_name or 'demo')}</td></tr>
         <tr><td class="config-label">Mode</td><td>{html.escape(mode or 'demo')}</td></tr>
         <tr><td class="config-label">Prompt Version</td><td>{html.escape(report.prompt_version)}</td></tr>
       </table>

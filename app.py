@@ -75,9 +75,13 @@ def _make_eval_runner(role, model_override, prompt_source, job_id):
                 mode=config.MODE,
             )
 
+            judge_cfg = config.get_judge_config()
+            _judge_name = f"{judge_cfg['model']} ({judge_cfg['provider']})"
+
             run_id = log_run(
                 report=report, role=role,
                 model=used_model,
+                judge_model=_judge_name,
                 provider=config.TARGET_PROVIDER,
                 mode=config.MODE,
                 prompt_source=prompt_source or config.TARGET_SYSTEM_PROMPT,
@@ -629,7 +633,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <table class="history-table">
     <thead>
       <tr>
-        <th>#</th><th>Timestamp</th><th>Role</th><th>Model</th><th>Grade</th>
+        <th>#</th><th>Timestamp</th><th>Role</th><th>Model</th><th>Judge</th><th>Grade</th>
         <th>Score</th><th>Tests</th><th>Latency</th><th>Tokens</th><th>Cost</th>
         <th>Type</th><th>Report</th>
       </tr>
@@ -641,6 +645,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <td>{{ run.timestamp[:16] }}</td>
         <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ run.role }}">{{ run.role }}</td>
         <td>{{ run.model or 'demo' }}</td>
+        <td>{{ run.judge_model or '-' }}</td>
         <td><span class="grade-badge grade-{{ run.grade[0].lower() if run.grade else 'd' }}">{{ run.grade }}</span></td>
         <td>{{ run.overall_pct }}%</td>
         <td>{{ run.num_tests }}</td>
@@ -835,6 +840,7 @@ function refreshHistory() {
         <td>${(run.timestamp||'').substring(0,16)}</td>
         <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${run.role}">${run.role}</td>
         <td>${run.model || 'demo'}</td>
+        <td>${run.judge_model || '-'}</td>
         <td><span class="grade-badge grade-${(run.grade||'d')[0].toLowerCase()}">${run.grade}</span></td>
         <td>${run.overall_pct}%</td>
         <td>${run.num_tests}</td>
@@ -859,10 +865,10 @@ function exportCSV() {
     const role = document.getElementById('historyFilter').value;
     const filtered = role ? runs.filter(r => r.role === role) : runs;
 
-    const headers = ['ID','Timestamp','Role','Model','Grade','Score %','Tests','Criteria',
+    const headers = ['ID','Timestamp','Role','Model','Judge Model','Grade','Score %','Tests','Criteria',
       'Avg Latency (s)','P95 Latency (s)','Total Tokens','Est Cost (USD)','Duration (s)','Type','Notes'];
     const rows = filtered.map(r => [
-      r.id, r.timestamp, r.role, r.model||'demo', r.grade, r.overall_pct,
+      r.id, r.timestamp, r.role, r.model||'demo', r.judge_model||'-', r.grade, r.overall_pct,
       r.num_tests, r.num_criteria, r.avg_latency||'', r.p95_latency||'',
       r.total_tokens||'', r.estimated_cost||'', r.total_elapsed||'',
       r.run_type, (r.notes||'').replace(/,/g,';')

@@ -49,6 +49,11 @@ def init_db():
             notes       TEXT
         )
     """)
+    # Add judge_model column if not exists (for DB migrations)
+    try:
+        conn.execute("ALTER TABLE eval_runs ADD COLUMN judge_model TEXT DEFAULT ''")
+    except Exception:
+        pass  # Column already exists
     conn.commit()
     conn.close()
 
@@ -57,6 +62,7 @@ def log_run(
     report: EvalReport,
     role: str,
     model: str = "",
+    judge_model: str = "",
     provider: str = "",
     mode: str = "",
     prompt_source: str = "",
@@ -71,17 +77,18 @@ def log_run(
     try:
         cursor = conn.execute("""
             INSERT INTO eval_runs (
-                timestamp, role, prompt_name, prompt_version, model, provider, mode,
+                timestamp, role, prompt_name, prompt_version, model, judge_model, provider, mode,
                 prompt_source, overall_pct, grade, num_tests, num_criteria,
                 category_scores, avg_latency, p95_latency, total_tokens,
                 estimated_cost, total_elapsed, report_path, run_type, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             datetime.now().isoformat(),
             role,
             report.prompt_name,
             report.prompt_version,
             model,
+            judge_model,
             provider,
             mode,
             prompt_source,
