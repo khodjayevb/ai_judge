@@ -29,8 +29,14 @@ def generate_html_report(
     cat_labels = json.dumps(list(category_scores.keys()))
     cat_values = json.dumps(list(category_scores.values()))
 
+    # DAG category scores (aligned to same categories)
+    cat_dag = report.category_dag_scores()
+    cat_dag_values = json.dumps([cat_dag.get(c, 0) for c in category_scores.keys()])
+    has_dag = report.overall_dag_pct is not None
+
     test_labels = json.dumps([r.test_id for r in report.test_results])
     test_scores = json.dumps([r.score_pct for r in report.test_results])
+    test_dag_scores = json.dumps([r.dag_score_pct if r.dag_score_pct is not None else 0 for r in report.test_results])
     test_weights = json.dumps([r.weight for r in report.test_results])
 
     grade_color = _grade_color(report.grade)
@@ -352,8 +358,14 @@ def generate_html_report(
   <div class="score-grid">
     <div class="score-card">
       <div class="value" style="color:{grade_color}">{report.overall_pct}%</div>
-      <div class="label">Overall Score</div>
+      <div class="label">GEval Score</div>
+      <div class="hint">LLM-as-judge with chain-of-thought reasoning. Nuanced but non-deterministic.</div>
     </div>
+    {"" if not has_dag else f'''<div class="score-card">
+      <div class="value" style="color:var(--purple)">{report.overall_dag_pct}%</div>
+      <div class="label">DAG Score</div>
+      <div class="hint">Deterministic decision-tree scoring. Reproducible — same answer always gets the same score.</div>
+    </div>'''}
     <div class="score-card">
       <div class="value" style="color:{grade_color}">{report.grade}</div>
       <div class="label">Grade</div>
@@ -476,27 +488,41 @@ const catLabels = {cat_labels};
 const catValues = {cat_values};
 const testLabels = {test_labels};
 const testScores = {test_scores};
+const testDagScores = {test_dag_scores};
 const testWeights = {test_weights};
+const catDagValues = {cat_dag_values};
+const hasDag = {json.dumps(has_dag)};
 
 Chart.defaults.color = '#94a3b8';
 Chart.defaults.borderColor = '#334155';
 
 // Radar chart
+const radarDatasets = [{{
+  label: 'GEval %',
+  data: catValues,
+  fill: true,
+  backgroundColor: 'rgba(56,189,248,0.15)',
+  borderColor: '#38bdf8',
+  pointBackgroundColor: '#38bdf8',
+  pointBorderColor: '#fff',
+  pointRadius: 5,
+}}];
+if (hasDag) {{
+  radarDatasets.push({{
+    label: 'DAG %',
+    data: catDagValues,
+    fill: true,
+    backgroundColor: 'rgba(167,139,250,0.1)',
+    borderColor: '#a78bfa',
+    pointBackgroundColor: '#a78bfa',
+    pointBorderColor: '#fff',
+    pointRadius: 4,
+    borderDash: [5, 5],
+  }});
+}}
 new Chart(document.getElementById('radarChart'), {{
   type: 'radar',
-  data: {{
-    labels: catLabels,
-    datasets: [{{
-      label: 'Score %',
-      data: catValues,
-      fill: true,
-      backgroundColor: 'rgba(56,189,248,0.15)',
-      borderColor: '#38bdf8',
-      pointBackgroundColor: '#38bdf8',
-      pointBorderColor: '#fff',
-      pointRadius: 5,
-    }}]
-  }},
+  data: {{ labels: catLabels, datasets: radarDatasets }},
   options: {{
     scales: {{
       r: {{
@@ -506,46 +532,57 @@ new Chart(document.getElementById('radarChart'), {{
         ticks: {{ stepSize: 20, backdropColor: 'transparent' }},
       }}
     }},
-    plugins: {{ legend: {{ display: false }} }}
+    plugins: {{ legend: {{ display: hasDag, position: 'bottom' }} }}
   }}
 }});
 
 // Category bar chart
-const barColors = catValues.map(v => v >= 90 ? '#22c55e' : v >= 75 ? '#eab308' : '#ef4444');
+const barDatasets = [{{
+  label: 'GEval %',
+  data: catValues,
+  backgroundColor: catValues.map(v => v >= 90 ? '#22c55e' : v >= 75 ? '#eab308' : '#ef4444'),
+  borderRadius: 6,
+}}];
+if (hasDag) {{
+  barDatasets.push({{
+    label: 'DAG %',
+    data: catDagValues,
+    backgroundColor: '#a78bfa88',
+    borderRadius: 6,
+  }});
+}}
 new Chart(document.getElementById('barChart'), {{
   type: 'bar',
-  data: {{
-    labels: catLabels,
-    datasets: [{{
-      label: 'Score %',
-      data: catValues,
-      backgroundColor: barColors,
-      borderRadius: 6,
-    }}]
-  }},
+  data: {{ labels: catLabels, datasets: barDatasets }},
   options: {{
     indexAxis: 'y',
     scales: {{ x: {{ beginAtZero: true, max: 100 }} }},
-    plugins: {{ legend: {{ display: false }} }}
+    plugins: {{ legend: {{ display: hasDag, position: 'bottom' }} }}
   }}
 }});
 
 // Individual test chart
 const wColors = testWeights.map(w => w >= 3 ? '#a78bfa' : w >= 2 ? '#38bdf8' : '#94a3b8');
+const testChartDatasets = [{{
+  label: 'GEval %',
+  data: testScores,
+  backgroundColor: testScores.map(s => s >= 90 ? '#22c55e' : s >= 75 ? '#eab308' : '#ef4444'),
+  borderRadius: 6,
+}}];
+if (hasDag) {{
+  testChartDatasets.push({{
+    label: 'DAG %',
+    data: testDagScores,
+    backgroundColor: '#a78bfa88',
+    borderRadius: 6,
+  }});
+}}
 new Chart(document.getElementById('testChart'), {{
   type: 'bar',
-  data: {{
-    labels: testLabels,
-    datasets: [{{
-      label: 'Score %',
-      data: testScores,
-      backgroundColor: testScores.map(s => s >= 90 ? '#22c55e' : s >= 75 ? '#eab308' : '#ef4444'),
-      borderRadius: 6,
-    }}]
-  }},
+  data: {{ labels: testLabels, datasets: testChartDatasets }},
   options: {{
     scales: {{ y: {{ beginAtZero: true, max: 100 }} }},
-    plugins: {{ legend: {{ display: false }} }}
+    plugins: {{ legend: {{ display: hasDag, position: 'bottom' }} }}
   }}
 }});
 

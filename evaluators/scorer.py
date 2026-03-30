@@ -45,6 +45,19 @@ class TestResult:
     def score_pct(self) -> float:
         return round(self.score * 100, 1)
 
+    @property
+    def dag_score(self) -> float | None:
+        """Average DAG score (0-1), or None if no DAG scores."""
+        dag_scores = [c.dag_score for c in self.criteria_results if c.dag_score is not None]
+        if not dag_scores:
+            return None
+        return sum(dag_scores) / len(dag_scores)
+
+    @property
+    def dag_score_pct(self) -> float | None:
+        ds = self.dag_score
+        return round(ds * 100, 1) if ds is not None else None
+
 
 @dataclass
 class EvalReport:
@@ -77,11 +90,29 @@ class EvalReport:
         if pct >= 60: return "C"
         return "D"
 
+    @property
+    def overall_dag_pct(self) -> float | None:
+        """Overall weighted DAG score percentage."""
+        dag_results = [(r.dag_score, r.weight) for r in self.test_results if r.dag_score is not None]
+        if not dag_results:
+            return None
+        total_w = sum(w for _, w in dag_results)
+        return round(sum(s * w for s, w in dag_results) / total_w * 100, 1) if total_w else None
+
     def category_scores(self) -> dict[str, float]:
         from collections import defaultdict
         totals: dict[str, list[float]] = defaultdict(list)
         for r in self.test_results:
             totals[r.category].append(r.score)
+        return {cat: round(sum(s) / len(s) * 100, 1) for cat, s in totals.items()}
+
+    def category_dag_scores(self) -> dict[str, float]:
+        """DAG scores by category. Returns None values for categories with no DAG data."""
+        from collections import defaultdict
+        totals: dict[str, list[float]] = defaultdict(list)
+        for r in self.test_results:
+            if r.dag_score is not None:
+                totals[r.category].append(r.dag_score)
         return {cat: round(sum(s) / len(s) * 100, 1) for cat, s in totals.items()}
 
     def weakest_criteria(self, n: int = 5) -> list[tuple[str, str, float]]:
