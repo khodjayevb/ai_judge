@@ -810,8 +810,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <table class="history-table">
     <thead>
       <tr>
-        <th>#</th><th>Timestamp</th><th>Role</th><th>Model</th><th>Judge</th><th>Grade</th>
-        <th>Score</th><th>Tests</th><th>Latency</th><th>Tokens</th><th>Cost</th>
+        <th>#</th><th>Timestamp</th><th>Role</th><th>Model</th><th>Judge</th>
+        <th>GEval</th><th>DAG</th><th>Combined</th><th>Grade</th>
+        <th>Tests</th><th>Latency</th><th>Cost</th>
         <th>Type</th><th>Report</th>
       </tr>
     </thead>
@@ -823,11 +824,12 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ run.role }}">{{ run.role }}</td>
         <td>{{ run.model or 'demo' }}</td>
         <td>{{ run.judge_model or '-' }}</td>
-        <td><span class="grade-badge grade-{{ run.grade[0].lower() if run.grade else 'd' }}">{{ run.grade }}</span></td>
         <td>{{ run.overall_pct }}%</td>
+        <td>{{ '%.1f' % run.dag_pct if run.dag_pct else '-' }}%</td>
+        <td style="font-weight:700">{{ '%.1f' % run.consolidated_pct if run.consolidated_pct else run.overall_pct }}%</td>
+        <td><span class="grade-badge grade-{{ (run.consolidated_grade or run.grade or 'd')[0].lower() }}">{{ run.consolidated_grade or run.grade }}</span></td>
         <td>{{ run.num_tests }}</td>
         <td>{{ '%.1f' % run.avg_latency if run.avg_latency else '-' }}s</td>
-        <td>{{ '{:,}'.format(run.total_tokens) if run.total_tokens else '-' }}</td>
         <td>{{ '$%.4f' % run.estimated_cost if run.estimated_cost else '-' }}</td>
         <td>{{ run.run_type }}</td>
         <td>{% if run.report_path %}<a href="/reports/{{ run.report_path.split('/')[-1].split('\\')[-1] }}" target="_blank">View</a>{% else %}-{% endif %}</td>
@@ -1119,11 +1121,12 @@ function refreshHistory() {
         <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${run.role}">${run.role}</td>
         <td>${run.model || 'demo'}</td>
         <td>${run.judge_model || '-'}</td>
-        <td><span class="grade-badge grade-${(run.grade||'d')[0].toLowerCase()}">${run.grade}</span></td>
         <td>${run.overall_pct}%</td>
+        <td>${run.dag_pct ? run.dag_pct.toFixed(1) + '%' : '-'}</td>
+        <td style="font-weight:700">${run.consolidated_pct ? run.consolidated_pct.toFixed(1) : run.overall_pct}%</td>
+        <td><span class="grade-badge grade-${((run.consolidated_grade||run.grade||'d')[0]).toLowerCase()}">${run.consolidated_grade||run.grade}</span></td>
         <td>${run.num_tests}</td>
         <td>${run.avg_latency ? run.avg_latency.toFixed(1) + 's' : '-'}</td>
-        <td>${run.total_tokens ? run.total_tokens.toLocaleString() : '-'}</td>
         <td>${run.estimated_cost ? '$' + run.estimated_cost.toFixed(4) : '-'}</td>
         <td>${run.run_type}</td>
         <td>${run.report_path ? '<a href="/reports/' + run.report_path.split(/[/\\]/).pop() + '" target="_blank">View</a>' : '-'}</td>
@@ -1143,10 +1146,11 @@ function exportCSV() {
     const role = document.getElementById('historyFilter').value;
     const filtered = role ? runs.filter(r => r.role === role) : runs;
 
-    const headers = ['ID','Timestamp','Role','Model','Judge Model','Grade','Score %','Tests','Criteria',
+    const headers = ['ID','Timestamp','Role','Model','Judge Model','GEval %','DAG %','Combined %','Grade','Tests','Criteria',
       'Avg Latency (s)','P95 Latency (s)','Total Tokens','Est Cost (USD)','Duration (s)','Type','Notes'];
     const rows = filtered.map(r => [
-      r.id, r.timestamp, r.role, r.model||'demo', r.judge_model||'-', r.grade, r.overall_pct,
+      r.id, r.timestamp, r.role, r.model||'demo', r.judge_model||'-',
+      r.overall_pct, r.dag_pct||'', r.consolidated_pct||r.overall_pct, r.consolidated_grade||r.grade,
       r.num_tests, r.num_criteria, r.avg_latency||'', r.p95_latency||'',
       r.total_tokens||'', r.estimated_cost||'', r.total_elapsed||'',
       r.run_type, (r.notes||'').replace(/,/g,';')

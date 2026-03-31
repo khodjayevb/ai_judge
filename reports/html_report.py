@@ -328,8 +328,9 @@ def generate_html_report(
     </div>
     <div class="grade-ring">
       <div style="text-align:center">
-        <div class="grade">{report.grade}</div>
-        <div class="pct">{report.overall_pct}%</div>
+        <div class="grade">{report.consolidated_grade}</div>
+        <div class="pct">{report.consolidated_pct}%</div>
+        <div style="font-size:0.65rem;color:var(--text2);margin-top:0.2rem">Combined Score</div>
       </div>
     </div>
   </div>

@@ -78,9 +78,8 @@ class EvalReport:
     def overall_pct(self) -> float:
         return round(self.overall_score * 100, 1)
 
-    @property
-    def grade(self) -> str:
-        pct = self.overall_pct
+    @staticmethod
+    def _pct_to_grade(pct: float) -> str:
         if pct >= 95: return "A+"
         if pct >= 90: return "A"
         if pct >= 85: return "A-"
@@ -90,6 +89,24 @@ class EvalReport:
         if pct >= 65: return "C+"
         if pct >= 60: return "C"
         return "D"
+
+    @property
+    def grade(self) -> str:
+        """Grade based on GEval score."""
+        return self._pct_to_grade(self.overall_pct)
+
+    @property
+    def consolidated_pct(self) -> float:
+        """Consolidated score: 60% GEval + 40% DAG (or 100% GEval if no DAG)."""
+        dag = self.overall_dag_pct
+        if dag is not None:
+            return round(self.overall_pct * 0.6 + dag * 0.4, 1)
+        return self.overall_pct
+
+    @property
+    def consolidated_grade(self) -> str:
+        """Grade based on consolidated score."""
+        return self._pct_to_grade(self.consolidated_pct)
 
     @property
     def overall_dag_pct(self) -> float | None:

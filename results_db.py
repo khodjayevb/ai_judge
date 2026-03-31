@@ -49,11 +49,17 @@ def init_db():
             notes       TEXT
         )
     """)
-    # Add judge_model column if not exists (for DB migrations)
-    try:
-        conn.execute("ALTER TABLE eval_runs ADD COLUMN judge_model TEXT DEFAULT ''")
-    except Exception:
-        pass  # Column already exists
+    # Add columns if not exists (for DB migrations)
+    for col, default in [
+        ("judge_model", "''"),
+        ("dag_pct", "NULL"),
+        ("consolidated_pct", "NULL"),
+        ("consolidated_grade", "''"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE eval_runs ADD COLUMN {col} {default}")
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -78,10 +84,10 @@ def log_run(
         cursor = conn.execute("""
             INSERT INTO eval_runs (
                 timestamp, role, prompt_name, prompt_version, model, judge_model, provider, mode,
-                prompt_source, overall_pct, grade, num_tests, num_criteria,
-                category_scores, avg_latency, p95_latency, total_tokens,
+                prompt_source, overall_pct, dag_pct, consolidated_pct, grade, consolidated_grade,
+                num_tests, num_criteria, category_scores, avg_latency, p95_latency, total_tokens,
                 estimated_cost, total_elapsed, report_path, run_type, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             datetime.now().isoformat(),
             role,
@@ -93,7 +99,10 @@ def log_run(
             mode,
             prompt_source,
             report.overall_pct,
+            report.overall_dag_pct,
+            report.consolidated_pct,
             report.grade,
+            report.consolidated_grade,
             len(report.test_results),
             sum(len(r.criteria_results) for r in report.test_results),
             json.dumps(report.category_scores()),
