@@ -8,6 +8,7 @@ Open: http://localhost:5000
 import sys
 import json
 import threading
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -72,7 +73,7 @@ def _make_eval_runner(role, model_override, prompt_source, job_id):
 
             report_path = generate_html_report(
                 report, recs,
-                output_path=f"reports/evaluation_report_{role}.html",
+                output_path=f"reports/eval_{role}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                 system_prompt=report_prompt,
                 model_name=used_model,
                 judge_model_name=_judge_name,
@@ -101,7 +102,7 @@ def _make_eval_runner(role, model_override, prompt_source, job_id):
                 "run_id": run_id,
                 "grade": report.grade,
                 "score": report.overall_pct,
-                "report_url": f"/reports/evaluation_report_{role}.html",
+                "report_url": f"/reports/{Path(report_path).name}",
                 "categories": report.category_scores(),
                 "perf": report.perf_summary(),
             }
@@ -226,7 +227,7 @@ def _run_comparison(role, run_a_cfg, run_b_cfg, job_id):
 
             report_path = generate_comparison_report(
                 report_a, report_b, recs,
-                output_path=f"reports/comparison_report_{role}.html",
+                output_path=f"reports/compare_{role}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                 system_prompt_v1=PROMPT_A, system_prompt_v2=PROMPT_B,
                 model_name=f"A: {a_label} vs B: {b_label}",
                 mode=config.MODE,
@@ -248,7 +249,7 @@ def _run_comparison(role, run_a_cfg, run_b_cfg, job_id):
                 "a_grade": report_a.grade, "a_score": report_a.overall_pct, "a_label": a_label,
                 "b_grade": report_b.grade, "b_score": report_b.overall_pct, "b_label": b_label,
                 "delta": round(delta, 1),
-                "report_url": f"/reports/comparison_report_{role}.html",
+                "report_url": f"/reports/{Path(report_path).name}",
             }
         except Exception as e:
             _jobs[job_id]["status"] = "error"
@@ -358,7 +359,7 @@ def api_eval_generated():
 
             report_path = generate_html_report(
                 report, recs,
-                output_path=f"reports/eval_generated_{role}.html",
+                output_path=f"reports/eval_gen_{role}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                 system_prompt=SYSTEM_PROMPT,
                 model_name=config.get_model_display_name(),
                 judge_model_name=f"{judge_cfg['model']} ({judge_cfg['provider']})",
@@ -369,7 +370,7 @@ def api_eval_generated():
             _jobs[job_id]["result"] = {
                 "grade": report.grade,
                 "score": report.overall_pct,
-                "report_url": f"/reports/eval_generated_{role}.html",
+                "report_url": f"/reports/{Path(report_path).name}",
                 "categories": report.category_scores(),
                 "perf": report.perf_summary(),
             }
@@ -426,7 +427,7 @@ def api_redteam():
             _client_cache.clear()
             report_path = generate_red_team_report(
                 results,
-                output_path=f"reports/red_team_{role}.html",
+                output_path=f"reports/redteam_{role}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
             )
 
             # Log to history table
@@ -447,7 +448,7 @@ def api_redteam():
                 "overall_pass_rate": results["overall_pass_rate"],
                 "total_attacks": results["total_attacks"],
                 "overview": results["overview"],
-                "report_url": f"/reports/red_team_{role}.html",
+                "report_url": f"/reports/{Path(report_path).name}",
             }
         except Exception as e:
             _jobs[job_id]["status"] = "error"
