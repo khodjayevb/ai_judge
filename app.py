@@ -865,7 +865,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       {% for run in history %}
       <tr data-role="{{ run.role }}">
         <td>{{ run.id }}</td>
-        <td>{{ run.timestamp[:16] }}</td>
+        <td style="white-space:nowrap">{{ run.timestamp[:10] }} {{ run.timestamp[11:16] }}</td>
         <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ run.role }}">{{ run.role }}</td>
         <td>{{ run.model or 'demo' }}</td>
         <td>{{ run.judge_model or '-' }}</td>
@@ -1220,7 +1220,7 @@ function refreshHistory() {
     document.getElementById('historyBody').innerHTML = runs.map(run => `
       <tr data-role="${run.role}">
         <td>${run.id}</td>
-        <td>${(run.timestamp||'').substring(0,16)}</td>
+        <td style="white-space:nowrap">${(run.timestamp||'').substring(0,10)} ${(run.timestamp||'').substring(11,16)}</td>
         <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${run.role}">${run.role}</td>
         <td>${run.model || 'demo'}</td>
         <td>${run.judge_model || '-'}</td>

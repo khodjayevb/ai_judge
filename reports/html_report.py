@@ -155,13 +155,25 @@ def generate_html_report(
                     dim_badges += f'<span style="background:{dc};color:#000;padding:0.1rem 0.35rem;border-radius:3px;font-size:0.6rem;font-weight:600;margin-right:0.2rem" title="{dname}: {"Pass" if ddata["passed"] else "Fail"}">{dname}: {icon}</span>'
                 dag_dims_html = f'<div style="margin-top:0.2rem">{dim_badges}</div>'
 
+            # Build score display: GEval + DAG on same line
+            if c.dag_score is not None:
+                score_html = (
+                    f'<span style="color:{bar_color};font-weight:600">{c.score:.0%}</span>'
+                    f' <span style="color:var(--text2);font-size:0.7rem">GEval</span>'
+                    f' <span style="color:var(--text2);margin:0 0.2rem">|</span>'
+                    f' <span style="color:{_score_bar_color(c.dag_score)};font-weight:600">{c.dag_score:.0%}</span>'
+                    f' <span style="color:var(--text2);font-size:0.7rem">DAG</span>'
+                )
+            else:
+                score_html = f'<span style="color:{bar_color};font-weight:600">{c.score:.0%}</span>'
+
             criteria_html += f"""
             <div class="criterion-row">
                 <div class="criterion-text">{html.escape(c.text)}</div>
                 <div class="criterion-bar-wrap">
                     <div class="criterion-bar" style="width:{c.score*100}%;background:{bar_color}"></div>
                 </div>
-                <div class="criterion-score">{c.score:.0%}{dag_badge}</div>
+                <div class="criterion-score">{score_html}</div>
                 <div class="criterion-explanation">{html.escape(c.explanation)}{dag_dims_html}</div>
             </div>"""
 
@@ -182,8 +194,8 @@ def generate_html_report(
             <div class="test-header">
                 <span class="test-id">{r.test_id}</span>
                 <span class="test-category badge">{r.category}</span>
-                <span class="test-score" style="color:{_score_bar_color(r.score)}">{r.score_pct}%</span>
-                <span class="test-weight">Weight: {r.weight}x | {r.metrics.latency_seconds:.1f}s | {r.metrics.output_tokens} tokens</span>
+                <span class="test-score" style="color:{_score_bar_color(r.score)}">GEval: {r.score_pct}%{f' | <span style="color:var(--purple)">DAG: {r.dag_score_pct}%</span>' if r.dag_score_pct is not None else ''}</span>
+                <span class="test-weight">W:{r.weight}x | {r.metrics.latency_seconds:.1f}s | {r.metrics.output_tokens}tok</span>
                 {safety_badges}
             </div>
             <div class="test-question"><strong>Q:</strong> {html.escape(r.question)}</div>
@@ -270,7 +282,7 @@ def generate_html_report(
     font-size:0.85rem; max-height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-word; }}
 
   /* Criteria */
-  .criterion-row {{ display:grid; grid-template-columns:1fr 120px 50px; gap:0.5rem;
+  .criterion-row {{ display:grid; grid-template-columns:1fr 120px 150px; gap:0.5rem;
     align-items:center; padding:0.4rem 0; border-bottom:1px solid var(--surface2); }}
   .criterion-text {{ font-size:0.85rem; }}
   .criterion-bar-wrap {{ background:var(--surface2); border-radius:4px; height:8px; }}
