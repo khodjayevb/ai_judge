@@ -601,10 +601,12 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         </div>
         <div class="form-group">
           <label>System Prompt</label>
-          <select id="evalPrompt">
+          <select id="evalPrompt" onchange="toggleCustomPrompt('evalCustomPrompt', this.value)">
             <option value="local">Local (from codebase)</option>
-            <option value="none">None (test deployed model)</option>
+            <option value="none">None (deployed model / Foundry assistant)</option>
+            <option value="custom">Custom (paste your own)</option>
           </select>
+          <textarea id="evalCustomPrompt" placeholder="Paste your system prompt here..." style="display:none;margin-top:0.3rem;background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.8rem;font-family:monospace;min-height:80px;width:100%;resize:vertical"></textarea>
         </div>
         <div class="form-group" style="flex:0">
           <label>&nbsp;</label>
@@ -652,11 +654,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
           </div>
           <div class="form-group">
             <label>System Prompt</label>
-            <select id="cmpPromptA">
+            <select id="cmpPromptA" onchange="toggleCustomPrompt('cmpCustomPromptA', this.value)">
               <option value="local">Local (full prompt)</option>
               <option value="weak">Weak baseline (v1)</option>
-              <option value="none">None (deployed model)</option>
+              <option value="none">None (deployed / Foundry assistant)</option>
+              <option value="custom">Custom (paste your own)</option>
             </select>
+            <textarea id="cmpCustomPromptA" placeholder="Paste system prompt for Run A..." style="display:none;margin-top:0.3rem;background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.8rem;font-family:monospace;min-height:60px;width:100%;resize:vertical"></textarea>
           </div>
         </div>
         <div class="ab-vs">VS</div>
@@ -678,11 +682,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
           </div>
           <div class="form-group">
             <label>System Prompt</label>
-            <select id="cmpPromptB">
+            <select id="cmpPromptB" onchange="toggleCustomPrompt('cmpCustomPromptB', this.value)">
               <option value="local">Local (full prompt)</option>
               <option value="weak">Weak baseline (v1)</option>
-              <option value="none">None (deployed model)</option>
+              <option value="none">None (deployed / Foundry assistant)</option>
+              <option value="custom">Custom (paste your own)</option>
             </select>
+            <textarea id="cmpCustomPromptB" placeholder="Paste system prompt for Run B..." style="display:none;margin-top:0.3rem;background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.8rem;font-family:monospace;min-height:60px;width:100%;resize:vertical"></textarea>
           </div>
         </div>
       </div>
@@ -730,10 +736,12 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         </div>
         <div class="form-group">
           <label>System Prompt</label>
-          <select id="rtPrompt">
+          <select id="rtPrompt" onchange="toggleCustomPrompt('rtCustomPrompt', this.value)">
             <option value="local">Local (from codebase)</option>
-            <option value="none">None (test deployed model)</option>
+            <option value="none">None (deployed / Foundry assistant)</option>
+            <option value="custom">Custom (paste your own)</option>
           </select>
+          <textarea id="rtCustomPrompt" placeholder="Paste system prompt to test..." style="display:none;margin-top:0.3rem;background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.8rem;font-family:monospace;min-height:60px;width:100%;resize:vertical"></textarea>
         </div>
         <div class="form-group" style="flex:0">
           <label>&nbsp;</label>
@@ -795,6 +803,41 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
           <button class="btn btn-purple" onclick="runEvalOnGenerated()">Run Evaluation on These</button>
         </div>
       </div>
+
+      <hr style="border:1px solid var(--surface2);margin:1.5rem 0">
+      <div class="panel-title" style="font-size:1rem">Add Manual Test Case</div>
+      <p style="color:var(--text2);margin-bottom:0.75rem;font-size:0.85rem">Create a test case by hand and add it to the generated list above.</p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Test ID</label>
+          <input type="text" id="manualId" placeholder="e.g., PERF-01" style="max-width:150px">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <input type="text" id="manualCategory" placeholder="e.g., Performance">
+        </div>
+        <div class="form-group" style="max-width:100px">
+          <label>Weight (1-3)</label>
+          <select id="manualWeight">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0.5rem">
+        <label>Question</label>
+        <textarea id="manualQuestion" placeholder="The user question to test..." style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.85rem;min-height:50px;width:100%;resize:vertical"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:0.5rem">
+        <label>Criteria (one per line, up to 5)</label>
+        <textarea id="manualCriteria" placeholder="Recommends star schema for data modeling&#10;Mentions Kimball methodology&#10;Addresses fact vs dimension table design&#10;Considers performance implications&#10;Provides specific Power BI guidance" style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.85rem;min-height:80px;width:100%;resize:vertical"></textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:0.75rem">
+        <label>Context / Ground Truth (optional, one per line)</label>
+        <textarea id="manualContext" placeholder="Factual statements for hallucination detection..." style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.85rem;min-height:40px;width:100%;resize:vertical"></textarea>
+      </div>
+      <button class="btn" style="background:var(--surface2);color:var(--text)" onclick="addManualTestCase()">Add Test Case</button>
     </div>
   </div>
 
@@ -894,7 +937,7 @@ function getModel(selectId) {
 function runEval() {
   const role = document.getElementById('evalRole').value;
   const model = getModel('evalModel');
-  const prompt = document.getElementById('evalPrompt').value;
+  const prompt = getPromptValue('evalPrompt', 'evalCustomPrompt');
   document.getElementById('btnEval').disabled = true;
   showProgress('eval');
 
@@ -922,6 +965,64 @@ function runGenerate() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({role, count})
   }).then(r => r.json()).then(d => pollJob(d.job_id, 'gen'));
+}
+
+function toggleCustomPrompt(textareaId, value) {
+  const ta = document.getElementById(textareaId);
+  if (ta) ta.style.display = value === 'custom' ? 'block' : 'none';
+}
+
+function getPromptValue(selectId, textareaId) {
+  const sel = document.getElementById(selectId);
+  if (sel.value === 'custom') {
+    return 'custom:' + document.getElementById(textareaId).value;
+  }
+  return sel.value;
+}
+
+function addManualTestCase() {
+  const id = document.getElementById('manualId').value.trim();
+  const category = document.getElementById('manualCategory').value.trim();
+  const question = document.getElementById('manualQuestion').value.trim();
+  const criteriaText = document.getElementById('manualCriteria').value.trim();
+  const contextText = document.getElementById('manualContext').value.trim();
+  const weight = parseInt(document.getElementById('manualWeight').value);
+
+  if (!id || !question || !criteriaText) {
+    alert('Please fill in at least Test ID, Question, and Criteria.');
+    return;
+  }
+
+  const criteria = criteriaText.split('\n').map(c => c.trim()).filter(c => c).slice(0, 5);
+  const context = contextText ? contextText.split('\n').map(c => c.trim()).filter(c => c) : undefined;
+
+  const tc = { id, category: category || 'General', question, criteria, weight, _generated: false, _needs_review: false };
+  if (context && context.length) tc.context = context;
+
+  _generatedTests.push(tc);
+
+  // Show the test cases section and refresh display
+  document.getElementById('genTestCases').style.display = 'block';
+  document.getElementById('genTestCount').textContent = '(' + _generatedTests.length + ')';
+
+  // Add to list
+  const list = document.getElementById('genTestList');
+  list.innerHTML += `
+    <div style="background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:0.5rem;border-left:3px solid var(--green)">
+      <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:0.5rem">
+        <span style="font-weight:700;color:var(--green);font-family:monospace">${tc.id}</span>
+        <span style="background:var(--surface2);padding:0.1rem 0.5rem;border-radius:4px;font-size:0.75rem">${tc.category}</span>
+        <span style="color:var(--text2);font-size:0.75rem">${tc.criteria.length} criteria | weight: ${tc.weight}x</span>
+        <span style="background:var(--green);color:#000;padding:0.1rem 0.4rem;border-radius:4px;font-size:0.65rem;font-weight:600">MANUAL</span>
+      </div>
+      <div style="font-size:0.9rem"><strong>Q:</strong> ${tc.question}</div>
+    </div>`;
+
+  // Clear form
+  document.getElementById('manualId').value = '';
+  document.getElementById('manualQuestion').value = '';
+  document.getElementById('manualCriteria').value = '';
+  document.getElementById('manualContext').value = '';
 }
 
 function downloadGenerated() {
@@ -968,7 +1069,7 @@ function runEvalOnGenerated() {
 function runRedTeam() {
   const role = document.getElementById('rtRole').value;
   const model = getModel('rtModel');
-  const prompt = document.getElementById('rtPrompt').value;
+  const prompt = getPromptValue('rtPrompt', 'rtCustomPrompt');
   document.getElementById('btnRedTeam').disabled = true;
   showProgress('rt');
   document.getElementById('rtBar').style.width = '30%';
@@ -990,8 +1091,8 @@ function runComparison() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       role, run_type: 'comparison',
-      run_a: { model: getModel('cmpModelA'), prompt_source: document.getElementById('cmpPromptA').value },
-      run_b: { model: getModel('cmpModelB'), prompt_source: document.getElementById('cmpPromptB').value },
+      run_a: { model: getModel('cmpModelA'), prompt_source: getPromptValue('cmpPromptA', 'cmpCustomPromptA') },
+      run_b: { model: getModel('cmpModelB'), prompt_source: getPromptValue('cmpPromptB', 'cmpCustomPromptB') },
     })
   }).then(r => r.json()).then(d => pollJob(d.job_id, 'cmp'));
 }

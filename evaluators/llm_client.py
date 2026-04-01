@@ -281,6 +281,8 @@ def resolve_system_prompt(local_prompt: str) -> str:
         return local_prompt
     elif source == "none":
         return ""
+    elif source.startswith("custom:"):
+        return source[7:]  # Strip "custom:" prefix, return the pasted prompt
     elif source.startswith("file:"):
         p = Path(source[5:])
         if not p.exists():
