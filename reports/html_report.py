@@ -350,7 +350,20 @@ def generate_html_report(
             if judge_context_info and judge_context_info.get("loaded")
             else '<span style="color:var(--yellow)">NONE</span> — No reference docs found. Add to docs/{role_slug}/ for domain-aware judging.'
         }</td></tr>
-        <tr><td class="config-label">Scoring Rubric</td><td><span style="color:var(--green);font-weight:600">ACTIVE</span> — 6-level rubric (1.0=Excellent to 0.0=Not Addressed)</td></tr>
+        <tr><td class="config-label">Scoring Rubric</td><td>
+          <span style="color:var(--green);font-weight:600">ACTIVE</span>
+          <details style="display:inline-block;margin-left:0.5rem">
+            <summary style="cursor:pointer;color:var(--accent);font-size:0.85rem">View rubric</summary>
+            <div style="background:var(--bg);padding:0.75rem;border-radius:6px;margin-top:0.5rem;font-size:0.8rem;line-height:1.6">
+              <strong>1.0 Excellent</strong>: Fully addressed with specific details, exact technologies, versions, actionable steps<br>
+              <strong>0.8 Good</strong>: Addressed with mostly specific details, correct direction, minor gap<br>
+              <strong>0.6 Adequate</strong>: Mentioned with some detail but lacks specificity<br>
+              <strong>0.4 Weak</strong>: Barely addressed, vague, missing critical details<br>
+              <strong>0.2 Poor</strong>: Mentioned in passing, no useful guidance<br>
+              <strong>0.0 Not Addressed</strong>: Not mentioned or contradicts the criterion
+            </div>
+          </details>
+        </td></tr>
       </table>
     </div>
     <div class="config-card">
