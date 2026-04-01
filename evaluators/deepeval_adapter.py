@@ -97,17 +97,19 @@ def evaluate_criteria(
     criteria: list[str],
     domain: str,
     judge_model,
+    role_slug: str = "",
 ) -> list[dict]:
     """Evaluate against criteria. Returns list of {score, explanation, dag_score}."""
     if config.MODE == "demo":
         return demo_judge_scores(response, len(criteria), question + response)
 
-    return _evaluate_with_deepeval(question, response, criteria, domain, judge_model)
+    return _evaluate_with_deepeval(question, response, criteria, domain, judge_model, role_slug)
 
 
-def _evaluate_with_deepeval(question, response, criteria, domain, judge_model):
+def _evaluate_with_deepeval(question, response, criteria, domain, judge_model, role_slug=""):
     from deepeval.test_case import LLMTestCase, LLMTestCaseParams
     from deepeval.metrics import GEval
+    from evaluators.judge_context import build_judge_prompt
 
     test_case = LLMTestCase(input=question, actual_output=response)
 
@@ -115,14 +117,14 @@ def _evaluate_with_deepeval(question, response, criteria, domain, judge_model):
     for criterion in criteria:
         result = {"score": 0.0, "explanation": "", "dag_score": None}
 
-        # GEval (non-deterministic, nuanced)
+        # Build domain-aware judge prompt with rubric + reference standards
+        judge_criteria = build_judge_prompt(criterion, domain, role_slug)
+
+        # GEval (non-deterministic, nuanced, now with context + rubric)
         try:
             metric = GEval(
                 name=criterion[:60],
-                criteria=(
-                    f"Evaluate whether the response adequately addresses: {criterion}. "
-                    f"Context: This is a {domain} assistant."
-                ),
+                criteria=judge_criteria,
                 evaluation_params=[LLMTestCaseParams.INPUT, LLMTestCaseParams.ACTUAL_OUTPUT],
                 model=judge_model,
                 threshold=0.5,

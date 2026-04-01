@@ -240,13 +240,14 @@ def run_evaluation(
         t1 = time.time()
         response, metrics = chat(system_prompt, tc["question"], role_slug=role_slug)
 
-        # Step 2: Evaluate response against criteria via deepeval
+        # Step 2: Evaluate response against criteria via deepeval (with judge context)
         eval_results = evaluate_criteria(
             question=tc["question"],
             response=response,
             criteria=tc["criteria"],
             domain=domain,
             judge_model=judge_model,
+            role_slug=role_slug,
         )
 
         # Step 3: Run safety checks (pass context for hallucination detection)
