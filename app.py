@@ -28,8 +28,56 @@ app = Flask(__name__)
 _jobs: dict[str, dict] = {}
 
 
-def _make_eval_runner(role, model_override, prompt_source, job_id):
-    """Create a single evaluation run with optional model/prompt overrides."""
+def _average_reports(reports: list) -> object:
+    """Average multiple evaluation reports into one.
+    Uses the last report as the base structure, but averages all scores."""
+    from evaluators.scorer import EvalReport, TestResult, CriterionResult, ResponseMetrics
+
+    base = reports[-1]  # Use last report's structure (responses, etc.)
+    n = len(reports)
+
+    # Average each test result's criteria scores
+    for t_idx, test_result in enumerate(base.test_results):
+        for c_idx, criterion in enumerate(test_result.criteria_results):
+            # Average GEval scores
+            scores = [r.test_results[t_idx].criteria_results[c_idx].score for r in reports
+                      if t_idx < len(r.test_results) and c_idx < len(r.test_results[t_idx].criteria_results)]
+            criterion.score = round(sum(scores) / len(scores), 2) if scores else criterion.score
+
+            # Average DAG scores
+            dag_scores = [r.test_results[t_idx].criteria_results[c_idx].dag_score for r in reports
+                          if t_idx < len(r.test_results) and c_idx < len(r.test_results[t_idx].criteria_results)
+                          and r.test_results[t_idx].criteria_results[c_idx].dag_score is not None]
+            criterion.dag_score = round(sum(dag_scores) / len(dag_scores), 2) if dag_scores else criterion.dag_score
+
+        # Average safety scores
+        if test_result.safety:
+            for metric_name in test_result.safety:
+                safety_scores = [r.test_results[t_idx].safety.get(metric_name, {}).get("score", 0) for r in reports
+                                 if t_idx < len(r.test_results) and metric_name in r.test_results[t_idx].safety]
+                if safety_scores:
+                    avg = round(sum(safety_scores) / len(safety_scores), 2)
+                    test_result.safety[metric_name]["score"] = avg
+                    test_result.safety[metric_name]["passed"] = avg <= 0.5
+
+    # Average latency
+    for t_idx, test_result in enumerate(base.test_results):
+        latencies = [r.test_results[t_idx].metrics.latency_seconds for r in reports
+                     if t_idx < len(r.test_results)]
+        test_result.metrics.latency_seconds = round(sum(latencies) / len(latencies), 2) if latencies else 0
+
+    # Sum elapsed
+    base.total_elapsed = round(sum(r.total_elapsed for r in reports), 2)
+
+    # Mark as averaged
+    base.prompt_version = f"{base.prompt_version} (avg of {n} runs)"
+
+    return base
+
+
+def _make_eval_runner(role, model_override, prompt_source, job_id, num_runs=1):
+    """Create evaluation run(s) with optional model/prompt overrides.
+    When num_runs > 1, runs multiple evaluations and averages the scores."""
     def _run():
         try:
             # Override model if specified
@@ -48,17 +96,28 @@ def _make_eval_runner(role, model_override, prompt_source, job_id):
 
             SYSTEM_PROMPT, META = get_prompt(role)
             TEST_CASES = get_test_suite(role)
-            _jobs[job_id]["total"] = len(TEST_CASES)
+            _jobs[job_id]["total"] = len(TEST_CASES) * num_runs
 
-            def on_progress(current, total, test_id):
-                _jobs[job_id]["progress"] = current
-                _jobs[job_id]["current_test"] = test_id
+            all_reports = []
+            for run_i in range(num_runs):
+                run_label = f"Run {run_i+1}/{num_runs}: " if num_runs > 1 else ""
 
-            report = run_evaluation(
-                system_prompt=SYSTEM_PROMPT, test_cases=TEST_CASES,
-                prompt_name=META["name"], prompt_version=META["version"],
-                domain=META["domain"], role_slug=role, on_progress=on_progress,
-            )
+                def on_progress(current, total, test_id, _ri=run_i, _rl=run_label):
+                    _jobs[job_id]["progress"] = _ri * len(TEST_CASES) + current
+                    _jobs[job_id]["current_test"] = f"{_rl}{test_id}"
+
+                r = run_evaluation(
+                    system_prompt=SYSTEM_PROMPT, test_cases=TEST_CASES,
+                    prompt_name=META["name"], prompt_version=META["version"],
+                    domain=META["domain"], role_slug=role, on_progress=on_progress,
+                )
+                all_reports.append(r)
+
+            # If multi-run, average the scores into the final report
+            if num_runs > 1:
+                report = _average_reports(all_reports)
+            else:
+                report = all_reports[0]
 
             recs = generate_recommendations(report)
             used_model = model_override or config.get_model_display_name()
@@ -102,11 +161,12 @@ def _make_eval_runner(role, model_override, prompt_source, job_id):
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["result"] = {
                 "run_id": run_id,
-                "grade": report.grade,
-                "score": report.overall_pct,
+                "grade": report.consolidated_grade,
+                "score": report.consolidated_pct,
                 "report_url": f"/reports/{Path(report_path).name}",
                 "categories": report.category_scores(),
                 "perf": report.perf_summary(),
+                "num_runs": num_runs,
             }
         except Exception as e:
             _jobs[job_id]["status"] = "error"
@@ -132,12 +192,13 @@ def api_run():
     run_type = data.get("run_type", "evaluation")
     model = data.get("model", "")
     prompt_source = data.get("prompt_source", "local")
+    num_runs = int(data.get("runs", 1))
 
     job_id = f"{run_type}_{role}_{len(_jobs)}"
     _jobs[job_id] = {"status": "running", "progress": 0, "total": 0, "current_test": "", "result": None}
 
     if run_type == "evaluation":
-        thread = threading.Thread(target=_make_eval_runner(role, model, prompt_source, job_id))
+        thread = threading.Thread(target=_make_eval_runner(role, model, prompt_source, job_id, num_runs=num_runs))
     elif run_type == "comparison":
         # A/B comparison with flexible config
         run_a = data.get("run_a", {})
@@ -608,6 +669,15 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
           </select>
           <textarea id="evalCustomPrompt" placeholder="Paste your system prompt here..." style="display:none;margin-top:0.3rem;background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.8rem;font-family:monospace;min-height:80px;width:100%;resize:vertical"></textarea>
         </div>
+        <div class="form-group" style="max-width:80px">
+          <label>Runs</label>
+          <select id="evalRuns">
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="3">3x (avg)</option>
+            <option value="5">5x (avg)</option>
+          </select>
+        </div>
         <div class="form-group" style="flex:0">
           <label>&nbsp;</label>
           <button class="btn btn-primary" id="btnEval" onclick="runEval()">Run Evaluation</button>
@@ -938,13 +1008,17 @@ function runEval() {
   const role = document.getElementById('evalRole').value;
   const model = getModel('evalModel');
   const prompt = getPromptValue('evalPrompt', 'evalCustomPrompt');
+  const runs = parseInt(document.getElementById('evalRuns').value);
   document.getElementById('btnEval').disabled = true;
   showProgress('eval');
+  if (runs > 1) {
+    document.getElementById('evalText').textContent = `Running ${runs}x evaluations for averaging...`;
+  }
 
   fetch('/api/run', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({role, run_type: 'evaluation', model, prompt_source: prompt})
+    body: JSON.stringify({role, run_type: 'evaluation', model, prompt_source: prompt, runs})
   }).then(r => r.json()).then(d => pollJob(d.job_id, 'eval'));
 }
 
@@ -1204,7 +1278,7 @@ function showResult(job, prefix) {
       <div style="display:flex;align-items:center;gap:2rem;flex-wrap:wrap">
         <div style="text-align:center">
           <div class="result-grade" style="color:${gc}">${r.grade}</div>
-          <div>${r.score}%</div>
+          <div>${r.score}%${r.num_runs > 1 ? ' <span style="color:var(--text2);font-size:0.75rem">(avg of ' + r.num_runs + ' runs)</span>' : ''}</div>
         </div>
         ${perf.available ? `<div style="color:var(--text2);font-size:0.85rem">
           Latency: ${perf.avg_latency}s avg | ${perf.p95_latency}s p95<br>
