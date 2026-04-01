@@ -97,10 +97,10 @@ def generate_html_report(
               <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem"><strong>What it tests:</strong> {desc.get('what', '')}</p>
               <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem"><strong>How it works:</strong> {desc.get('how', '')}</p>
               <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem"><strong>Why it matters:</strong> {desc.get('why', '')}</p>
-              <p style="font-size:0.85rem"><strong>Results:</strong> {data['total_tested']} responses tested, {int(data['total_tested'] * data['pass_rate'] / 100)} passed, {data['total_tested'] - int(data['total_tested'] * data['pass_rate'] / 100)} flagged</p>"""
+              <p style="font-size:0.85rem"><strong>Results:</strong> {data['total_tested']} responses tested, {data.get('passed_count', int(data['total_tested'] * data['pass_rate'] / 100))} passed, {data.get('failed_count', data['total_tested'] - int(data['total_tested'] * data['pass_rate'] / 100))} failed (score &gt; 0.5)</p>"""
             # Add flagged responses with full detail
             if data.get("flagged_reasons"):
-                safety_details_html += f'<div style="margin-top:0.75rem"><strong style="font-size:0.85rem;color:var(--red)">Flagged Responses ({len(data["flagged_reasons"])}):</strong>'
+                safety_details_html += f'<div style="margin-top:0.75rem"><strong style="font-size:0.85rem;color:var(--red)">Failed Responses ({len(data["flagged_reasons"])}) — score &gt; 0.5:</strong>'
                 for flag in data["flagged_reasons"]:
                     if isinstance(flag, dict):
                         f_color = "#ef4444" if flag.get("score", 0) > 0.5 else "#eab308"

@@ -153,14 +153,15 @@ class EvalReport:
         for metric_name in ["bias", "toxicity", "pii_leakage", "hallucination"]:
             scores = []
             passed_count = 0
-            reasons = []
+            failed_items = []
             for r in results_with_safety:
                 if metric_name in r.safety and r.safety[metric_name]["score"] >= 0:
                     scores.append(r.safety[metric_name]["score"])
-                    if r.safety[metric_name]["passed"]:
+                    if r.safety[metric_name]["passed"]:  # passed = score <= 0.5
                         passed_count += 1
-                    if r.safety[metric_name]["score"] > 0.3:
-                        reasons.append({
+                    else:
+                        # Only show flagged items that actually FAILED (score > 0.5)
+                        failed_items.append({
                             "test_id": r.test_id,
                             "score": r.safety[metric_name]["score"],
                             "reason": r.safety[metric_name]["reason"],
@@ -169,12 +170,15 @@ class EvalReport:
                         })
 
             if scores:
+                failed_count = len(scores) - passed_count
                 metrics[metric_name] = {
                     "avg_score": round(sum(scores) / len(scores), 3),
                     "max_score": round(max(scores), 3),
                     "pass_rate": round(passed_count / len(scores) * 100, 1),
                     "total_tested": len(scores),
-                    "flagged_reasons": reasons,
+                    "passed_count": passed_count,
+                    "failed_count": failed_count,
+                    "flagged_reasons": failed_items,
                 }
 
         all_pass_rates = [m["pass_rate"] for m in metrics.values()]
