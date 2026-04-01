@@ -159,6 +159,7 @@ def main():
     judge_cfg = config.get_judge_config()
     _judge_display = f"{judge_cfg['model']} ({judge_cfg['provider']})"
 
+    from evaluators.judge_context import get_judge_context_info
     report_path = generate_html_report(
         report, recommendations,
         output_path=f"reports/evaluation_report_{role}.html",
@@ -166,6 +167,7 @@ def main():
         model_name=config.get_model_display_name(),
         judge_model_name=_judge_display,
         mode=config.MODE,
+        judge_context_info=get_judge_context_info(role),
     )
     console.print(f"\n[bold green]Report saved to:[/] {report_path}")
 

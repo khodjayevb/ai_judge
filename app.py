@@ -71,6 +71,7 @@ def _make_eval_runner(role, model_override, prompt_source, job_id):
             judge_cfg = config.get_judge_config()
             _judge_name = f"{judge_cfg['model']} ({judge_cfg['provider']})"
 
+            from evaluators.judge_context import get_judge_context_info
             report_path = generate_html_report(
                 report, recs,
                 output_path=f"reports/eval_{role}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
@@ -78,6 +79,7 @@ def _make_eval_runner(role, model_override, prompt_source, job_id):
                 model_name=used_model,
                 judge_model_name=_judge_name,
                 mode=config.MODE,
+                judge_context_info=get_judge_context_info(role),
             )
 
             run_id = log_run(

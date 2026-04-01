@@ -12,6 +12,7 @@ from pathlib import Path
 
 # Cache loaded contexts per role
 _context_cache: dict[str, str] = {}
+_context_meta: dict[str, dict] = {}  # {role: {files, total_chars, loaded}}
 
 
 def load_judge_context(role_slug: str) -> str:
@@ -26,24 +27,41 @@ def load_judge_context(role_slug: str) -> str:
 
     docs_dir = Path(f"docs/{role_slug}")
     parts = []
+    file_names = []
 
     if docs_dir.exists():
         for f in sorted(docs_dir.glob("*")):
             if f.suffix in (".md", ".txt"):
                 content = f.read_text(encoding="utf-8", errors="replace")
                 parts.append(f"### {f.name}\n{content}")
+                file_names.append(f.name)
 
     # Also check for role-specific files in docs/ root
     docs_root = Path("docs")
     if docs_root.exists():
         for f in docs_root.glob(f"{role_slug}*"):
-            if f.suffix in (".md", ".txt") and f.name not in [p.split("\n")[0] for p in parts]:
+            if f.suffix in (".md", ".txt") and f.name not in file_names:
                 content = f.read_text(encoding="utf-8", errors="replace")
                 parts.append(f"### {f.name}\n{content}")
+                file_names.append(f.name)
 
     context = "\n\n".join(parts)
     _context_cache[role_slug] = context
+    _context_meta[role_slug] = {
+        "loaded": len(file_names) > 0,
+        "files": file_names,
+        "total_chars": len(context),
+        "doc_count": len(file_names),
+    }
     return context
+
+
+def get_judge_context_info(role_slug: str) -> dict:
+    """Get metadata about what judge context was loaded for a role."""
+    # Ensure context is loaded
+    if role_slug not in _context_meta:
+        load_judge_context(role_slug)
+    return _context_meta.get(role_slug, {"loaded": False, "files": [], "total_chars": 0, "doc_count": 0})
 
 
 # ── Scoring Rubric ────────────────────────────────────────────────────

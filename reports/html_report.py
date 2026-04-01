@@ -22,6 +22,7 @@ def generate_html_report(
     model_name: str = "",
     judge_model_name: str = "",
     mode: str = "",
+    judge_context_info: dict | None = None,
 ) -> str:
     """Generate and save a beautiful HTML evaluation report."""
 
@@ -344,6 +345,12 @@ def generate_html_report(
         <tr><td class="config-label">Judge Model</td><td>{html.escape(judge_model_name or model_name or 'demo')}</td></tr>
         <tr><td class="config-label">Mode</td><td>{html.escape(mode or 'demo')}</td></tr>
         <tr><td class="config-label">Prompt Version</td><td>{html.escape(report.prompt_version)}</td></tr>
+        <tr><td class="config-label">Judge Context</td><td>{
+            f'<span style="color:var(--green);font-weight:600">ACTIVE</span> — {judge_context_info["doc_count"]} doc(s), {judge_context_info["total_chars"]:,} chars: {", ".join(judge_context_info["files"])}'
+            if judge_context_info and judge_context_info.get("loaded")
+            else '<span style="color:var(--yellow)">NONE</span> — No reference docs found. Add to docs/{role_slug}/ for domain-aware judging.'
+        }</td></tr>
+        <tr><td class="config-label">Scoring Rubric</td><td><span style="color:var(--green);font-weight:600">ACTIVE</span> — 6-level rubric (1.0=Excellent to 0.0=Not Addressed)</td></tr>
       </table>
     </div>
     <div class="config-card">
