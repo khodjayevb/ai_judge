@@ -364,6 +364,49 @@ def api_generate():
     return jsonify({"job_id": job_id})
 
 
+@app.route("/api/improve-prompt", methods=["POST"])
+def api_improve_prompt():
+    data = request.json
+    role = data.get("role", config.EVAL_ROLE)
+    job_id = f"improve_{role}_{len(_jobs)}"
+    _jobs[job_id] = {"status": "running", "progress": 0, "total": 1, "current_test": "Generating improved prompt...", "result": None}
+
+    def _run():
+        try:
+            from evaluators.prompt_improver import generate_improved_prompt
+            from evaluators.scorer import run_evaluation
+            from evaluators.recommender import generate_recommendations
+            from evaluators.llm_client import _client_cache
+
+            SYSTEM_PROMPT, META = get_prompt(role)
+            TEST_CASES = get_test_suite(role)
+
+            # Run a quick evaluation to get current scores
+            _jobs[job_id]["current_test"] = "Evaluating current prompt..."
+            report = run_evaluation(
+                system_prompt=SYSTEM_PROMPT, test_cases=TEST_CASES,
+                prompt_name=META["name"], prompt_version=META["version"],
+                domain=META["domain"], role_slug=role,
+            )
+            recs = generate_recommendations(report)
+
+            # Generate improved prompt
+            _jobs[job_id]["current_test"] = "Generating improved prompt..."
+            result = generate_improved_prompt(SYSTEM_PROMPT, report, recs)
+
+            _jobs[job_id]["status"] = "done"
+            _jobs[job_id]["progress"] = 1
+            _jobs[job_id]["result"] = result
+        except Exception as e:
+            _jobs[job_id]["status"] = "error"
+            _jobs[job_id]["result"] = {"error": str(e)}
+
+    thread = threading.Thread(target=_run)
+    thread.daemon = True
+    thread.start()
+    return jsonify({"job_id": job_id})
+
+
 @app.route("/api/save-test-suite", methods=["POST"])
 def api_save_test_suite():
     """Save generated tests as a Python test suite file."""
@@ -1054,6 +1097,78 @@ function getPromptValue(selectId, textareaId) {
   return sel.value;
 }
 
+function improvePrompt() {
+  const role = document.getElementById('evalRole').value;
+  showProgress('eval');
+  document.getElementById('evalBar').style.width = '30%';
+  document.getElementById('evalText').textContent = 'Analyzing weaknesses and generating improved prompt...';
+
+  fetch('/api/improve-prompt', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({role})
+  }).then(r => r.json()).then(d => {
+    const iv = setInterval(() => {
+      fetch('/api/status/' + d.job_id).then(r => r.json()).then(job => {
+        document.getElementById('evalText').textContent = job.current_test || 'Working...';
+        if (job.status === 'done' || job.status === 'error') {
+          clearInterval(iv);
+          document.getElementById('evalProgress').classList.remove('active');
+          document.getElementById('btnEval').disabled = false;
+          showImprovedPrompt(job);
+        }
+      });
+    }, 2000);
+  });
+}
+
+function showImprovedPrompt(job) {
+  const flash = document.getElementById('evalResult');
+  flash.classList.add('active');
+
+  if (job.status === 'error') {
+    flash.className = 'result-flash active error';
+    flash.innerHTML = `<strong>Error:</strong> ${job.result.error}`;
+    return;
+  }
+
+  const r = job.result;
+  flash.className = 'result-flash active success';
+  flash.innerHTML = `
+    <div>
+      <h3 style="color:var(--purple);margin-bottom:0.5rem">Auto-Improved System Prompt</h3>
+      <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.75rem">
+        Based on evaluation score of ${r.original_score}% (${r.original_grade}), ${r.weak_areas_addressed.length} weak areas addressed.
+      </p>
+      <div style="margin-bottom:0.75rem">
+        <strong style="font-size:0.85rem">Changes Made:</strong>
+        <div style="background:var(--bg);padding:0.75rem;border-radius:6px;margin-top:0.3rem;font-size:0.8rem;white-space:pre-wrap;max-height:150px;overflow-y:auto">${r.changes_summary}</div>
+      </div>
+      <details>
+        <summary style="cursor:pointer;color:var(--accent);font-size:0.85rem;margin-bottom:0.5rem">View improved prompt (${r.improved_prompt.length} chars)</summary>
+        <textarea id="improvedPromptText" style="width:100%;min-height:200px;max-height:400px;background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.75rem;font-size:0.8rem;font-family:monospace;resize:vertical">${r.improved_prompt.replace(/</g,'&lt;')}</textarea>
+      </details>
+      <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
+        <button class="btn btn-primary" onclick="evalWithImprovedPrompt()">Evaluate This Prompt</button>
+        <button class="btn" style="background:var(--surface2);color:var(--text)" onclick="copyImprovedPrompt()">Copy to Clipboard</button>
+      </div>
+    </div>`;
+}
+
+function evalWithImprovedPrompt() {
+  const prompt = document.getElementById('improvedPromptText').value;
+  document.getElementById('evalPrompt').value = 'custom';
+  document.getElementById('evalCustomPrompt').style.display = 'block';
+  document.getElementById('evalCustomPrompt').value = prompt;
+  updateHeaderTarget();
+  runEval();
+}
+
+function copyImprovedPrompt() {
+  const text = document.getElementById('improvedPromptText').value;
+  navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
+}
+
 function addManualTestCase() {
   const id = document.getElementById('manualId').value.trim();
   const category = document.getElementById('manualCategory').value.trim();
@@ -1285,6 +1400,7 @@ function showResult(job, prefix) {
           Tokens: ${(perf.total_tokens||0).toLocaleString()} | Cost: $${(perf.estimated_cost_usd||0).toFixed(4)}
         </div>` : ''}
         <a href="${r.report_url}" target="_blank" class="result-link">View Full Report &#8594;</a>
+        <button class="btn" style="background:var(--purple);color:#fff;font-size:0.8rem;padding:0.4rem 0.8rem" onclick="improvePrompt()">Auto-Improve Prompt</button>
       </div>`;
   }
 }
