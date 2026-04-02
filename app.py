@@ -380,13 +380,17 @@ def api_improve_prompt():
 
             SYSTEM_PROMPT, META = get_prompt(role)
             TEST_CASES = get_test_suite(role)
+            _jobs[job_id]["total"] = len(TEST_CASES)
 
-            # Run a quick evaluation to get current scores
-            _jobs[job_id]["current_test"] = "Evaluating current prompt..."
+            def on_progress(current, total, test_id):
+                _jobs[job_id]["progress"] = current
+                _jobs[job_id]["current_test"] = f"Evaluating: {test_id} ({current}/{total})"
+
+            # Run evaluation to get current scores
             report = run_evaluation(
                 system_prompt=SYSTEM_PROMPT, test_cases=TEST_CASES,
                 prompt_name=META["name"], prompt_version=META["version"],
-                domain=META["domain"], role_slug=role,
+                domain=META["domain"], role_slug=role, on_progress=on_progress,
             )
             recs = generate_recommendations(report)
 
