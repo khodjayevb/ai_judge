@@ -411,6 +411,33 @@ def api_improve_prompt():
     return jsonify({"job_id": job_id})
 
 
+@app.route("/api/calibrate", methods=["POST"])
+def api_calibrate():
+    job_id = f"calibrate_{len(_jobs)}"
+    _jobs[job_id] = {"status": "running", "progress": 0, "total": 1, "current_test": "Starting...", "result": None}
+
+    def _run():
+        try:
+            from evaluators.judge_calibration import run_calibration
+
+            def on_progress(current, total, label):
+                _jobs[job_id]["progress"] = current
+                _jobs[job_id]["total"] = total
+                _jobs[job_id]["current_test"] = label
+
+            result = run_calibration(on_progress=on_progress)
+            _jobs[job_id]["status"] = "done"
+            _jobs[job_id]["result"] = result
+        except Exception as e:
+            _jobs[job_id]["status"] = "error"
+            _jobs[job_id]["result"] = {"error": str(e)}
+
+    thread = threading.Thread(target=_run)
+    thread.daemon = True
+    thread.start()
+    return jsonify({"job_id": job_id})
+
+
 @app.route("/api/save-test-suite", methods=["POST"])
 def api_save_test_suite():
     """Save generated tests as a Python test suite file."""
@@ -678,6 +705,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="tab" onclick="switchTab('compare')">A/B Comparison</div>
     <div class="tab" onclick="switchTab('redteam')">Red Team</div>
     <div class="tab" onclick="switchTab('generate')">Generate Tests</div>
+    <div class="tab" onclick="switchTab('calibrate')">Judge Calibration</div>
   </div>
 
   <!-- ═══ EVALUATION TAB ═══ -->
@@ -958,6 +986,23 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- ═══ JUDGE CALIBRATION TAB ═══ -->
+  <div class="tab-content" id="tab-calibrate">
+    <div class="panel">
+      <div class="panel-title">Judge Calibration — Gold Standard Validation</div>
+      <p style="color:var(--text2);margin-bottom:1rem;font-size:0.9rem">
+        Tests whether your judge model scores accurately against pre-scored gold standard responses.
+        Includes excellent, adequate, poor, and deliberately misleading responses with known expected scores.
+      </p>
+      <button class="btn btn-primary" id="btnCalibrate" onclick="runCalibration()">Run Calibration Test</button>
+      <div class="progress-area" id="calProgress">
+        <div class="progress-bar-wrap"><div class="progress-bar" id="calBar" style="width:0%"></div></div>
+        <div class="progress-text" id="calText">Calibrating...</div>
+      </div>
+      <div class="result-flash" id="calResult"></div>
+    </div>
+  </div>
+
   <!-- ═══ HISTORY ═══ -->
   <h2>Evaluation History</h2>
   <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem">
@@ -1099,6 +1144,17 @@ function getPromptValue(selectId, textareaId) {
     return 'custom:' + document.getElementById(textareaId).value;
   }
   return sel.value;
+}
+
+function runCalibration() {
+  document.getElementById('btnCalibrate').disabled = true;
+  showProgress('cal');
+
+  fetch('/api/calibrate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: '{}'
+  }).then(r => r.json()).then(d => pollJob(d.job_id, 'cal'));
 }
 
 function improvePrompt() {
@@ -1330,7 +1386,71 @@ function showResult(job, prefix) {
   flash.className = 'result-flash active success';
   const r = job.result;
 
-  if (r.test_cases && r.count !== undefined && !r.total_attacks) {
+  if (r.overall_accuracy !== undefined) {
+    // Calibration result
+    const accColor = r.overall_accuracy >= 80 ? 'var(--green)' : r.overall_accuracy >= 60 ? 'var(--yellow)' : 'var(--red)';
+    const discColor = r.discrimination >= 0.5 ? 'var(--green)' : r.discrimination >= 0.3 ? 'var(--yellow)' : 'var(--red)';
+    const bq = r.by_quality || {};
+
+    let issuesHtml = '';
+    if (r.consistency_issues && r.consistency_issues.length) {
+      issuesHtml = '<div style="margin-top:0.75rem"><strong style="color:var(--red);font-size:0.85rem">Issues Found:</strong>' +
+        r.consistency_issues.map(i => `<div style="background:var(--bg);padding:0.4rem 0.6rem;border-radius:4px;margin-top:0.3rem;font-size:0.8rem;border-left:3px solid var(--red)">${i}</div>`).join('') + '</div>';
+    }
+
+    let detailRows = (r.results || []).map(t => {
+      const devColor = t.passed ? 'var(--green)' : 'var(--red)';
+      return `<tr>
+        <td style="font-family:monospace;color:var(--accent)">${t.test_id}</td>
+        <td><span style="background:var(--surface2);padding:0.1rem 0.4rem;border-radius:3px;font-size:0.7rem">${t.quality}</span></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.criterion}">${t.criterion}</td>
+        <td style="text-align:center">${t.expected.toFixed(2)}</td>
+        <td style="text-align:center;font-weight:600">${t.geval.toFixed(2)}</td>
+        <td style="text-align:center">${t.dag !== null ? t.dag.toFixed(2) : '-'}</td>
+        <td style="text-align:center;color:${devColor};font-weight:600">${t.deviation.toFixed(2)}</td>
+        <td style="text-align:center">${t.passed ? '<span style="color:var(--green)">PASS</span>' : '<span style="color:var(--red)">FAIL</span>'}</td>
+      </tr>`;
+    }).join('');
+
+    flash.innerHTML = `
+      <div>
+        <h3 style="color:var(--accent);margin-bottom:0.75rem">Judge Calibration Results</h3>
+        <div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem">
+          <div style="text-align:center">
+            <div style="font-size:2rem;font-weight:800;color:${accColor}">${r.overall_accuracy}%</div>
+            <div style="color:var(--text2);font-size:0.8rem">Accuracy</div>
+            <div style="color:var(--text2);font-size:0.7rem">${r.passed}/${r.total_tests} within tolerance</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:2rem;font-weight:800;color:${discColor}">${r.discrimination}</div>
+            <div style="color:var(--text2);font-size:0.8rem">Discrimination</div>
+            <div style="color:var(--text2);font-size:0.7rem">Gap between excellent & poor</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:2rem;font-weight:800">${r.avg_deviation}</div>
+            <div style="color:var(--text2);font-size:0.8rem">Avg Deviation</div>
+            <div style="color:var(--text2);font-size:0.7rem">From expected scores</div>
+          </div>
+          <div style="font-size:0.85rem;color:var(--text2)">
+            <strong>Avg scores by quality:</strong><br>
+            Excellent: ${(bq.excellent||{}).avg_geval||0}<br>
+            Adequate: ${(bq.adequate||{}).avg_geval||0}<br>
+            Poor: ${(bq.poor||{}).avg_geval||0}<br>
+            Misleading: ${(bq.misleading||{}).avg_geval||0}
+          </div>
+        </div>
+        ${issuesHtml}
+        <details style="margin-top:0.75rem">
+          <summary style="cursor:pointer;color:var(--accent);font-size:0.85rem">View all ${r.total_tests} test results</summary>
+          <div style="overflow-x:auto;margin-top:0.5rem">
+            <table class="history-table" style="font-size:0.8rem">
+              <thead><tr><th>ID</th><th>Quality</th><th>Criterion</th><th>Expected</th><th>GEval</th><th>DAG</th><th>Deviation</th><th>Result</th></tr></thead>
+              <tbody>${detailRows}</tbody>
+            </table>
+          </div>
+        </details>
+      </div>`;
+  } else if (r.test_cases && r.count !== undefined && !r.total_attacks) {
     // Generate result
     _generatedTests = r.test_cases;
     flash.innerHTML = `<strong style="color:var(--green)">Generated ${r.count} test cases!</strong> Review below and download as JSON.`;
