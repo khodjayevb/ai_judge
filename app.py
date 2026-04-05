@@ -1856,13 +1856,23 @@ function diffVersions(versionId) {
       }
 
       document.getElementById('versionDiffContent').innerHTML = `
-        <div style="margin-bottom:0.5rem;font-size:0.85rem">
-          <span style="color:var(--red)">v${older.id} (${(older.timestamp||'').substring(0,10)})</span>
-          → <span style="color:var(--green)">v${newer.id} (${(newer.timestamp||'').substring(0,10)})</span>
-          | ${older.change_note || ''} → ${newer.change_note || ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.5rem">
+          <div style="font-size:0.85rem;color:var(--red);font-weight:600">Previous: v${older.id} (${(older.timestamp||'').substring(0,10)}) ${older.change_note ? '— ' + older.change_note : ''}</div>
+          <div style="font-size:0.85rem;color:var(--green);font-weight:600">Current: v${newer.id} (${(newer.timestamp||'').substring(0,10)}) ${newer.change_note ? '— ' + newer.change_note : ''}</div>
         </div>
-        <div style="background:var(--bg);border-radius:8px;padding:0.75rem;max-height:400px;overflow-y:auto;font-family:monospace">
-          ${diffHtml}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <div style="background:var(--bg);border-radius:8px;padding:0.75rem;max-height:500px;overflow-y:auto;font-family:monospace;font-size:0.75rem;white-space:pre-wrap;border:1px solid rgba(239,68,68,0.3)">${(older.prompt_text||'(empty)').replace(/</g,'&lt;')}</div>
+          <div style="background:var(--bg);border-radius:8px;padding:0.75rem;max-height:500px;overflow-y:auto;font-family:monospace;font-size:0.75rem;white-space:pre-wrap;border:1px solid rgba(34,197,94,0.3)">${(newer.prompt_text||'(empty)').replace(/</g,'&lt;')}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:0.75rem">
+          <div>
+            <div style="font-size:0.8rem;color:var(--text2);margin-bottom:0.3rem">Previous Context (${(older.context_text||'').length} chars)</div>
+            <div style="background:var(--bg);border-radius:8px;padding:0.75rem;max-height:200px;overflow-y:auto;font-size:0.75rem;white-space:pre-wrap;border:1px solid rgba(239,68,68,0.2)">${(older.context_text||'(none)').replace(/</g,'&lt;').substring(0,3000)}</div>
+          </div>
+          <div>
+            <div style="font-size:0.8rem;color:var(--text2);margin-bottom:0.3rem">Current Context (${(newer.context_text||'').length} chars)</div>
+            <div style="background:var(--bg);border-radius:8px;padding:0.75rem;max-height:200px;overflow-y:auto;font-size:0.75rem;white-space:pre-wrap;border:1px solid rgba(34,197,94,0.2)">${(newer.context_text||'(none)').replace(/</g,'&lt;').substring(0,3000)}</div>
+          </div>
         </div>`;
     });
   });
