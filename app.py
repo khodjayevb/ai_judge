@@ -579,6 +579,30 @@ def api_update_role():
     return jsonify({"success": True, "updates": updates})
 
 
+@app.route("/api/role/upload-context/<slug>", methods=["POST"])
+def api_upload_context(slug):
+    """Upload context files directly to docs/{slug}/."""
+    if 'files' not in request.files:
+        return jsonify({"error": "No files uploaded"}), 400
+
+    ctx_dir = Path(f"docs/{slug}")
+    ctx_dir.mkdir(parents=True, exist_ok=True)
+
+    uploaded = []
+    for f in request.files.getlist('files'):
+        if f.filename and f.filename.endswith(('.md', '.txt', '.markdown')):
+            dest = ctx_dir / f.filename
+            f.save(str(dest))
+            uploaded.append(f.filename)
+
+    # Clear context cache
+    from evaluators.judge_context import _context_cache, _context_meta
+    _context_cache.pop(slug, None)
+    _context_meta.pop(slug, None)
+
+    return jsonify({"success": True, "uploaded": uploaded, "path": str(ctx_dir)})
+
+
 @app.route("/api/save-test-suite", methods=["POST"])
 def api_save_test_suite():
     """Save generated tests as a Python test suite file."""
@@ -1178,6 +1202,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div class="tab-content" id="tab-manage">
     <div class="panel">
       <div class="panel-title">Manage Roles</div>
+      <p style="color:var(--text2);font-size:0.85rem;margin-bottom:1rem">
+        Roles are stored as files in the codebase: <code>prompts/{slug}.py</code>, <code>test_suites/{slug}_tests.py</code>, <code>docs/{slug}/</code>.
+        Changes made here directly update these files. Use <code>git diff</code> to review changes before committing.
+      </p>
 
       <!-- Existing roles -->
       <h3 style="color:var(--accent);margin-bottom:0.75rem">Existing Roles</h3>
@@ -1221,13 +1249,38 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
       <div class="form-group" style="margin-bottom:0.75rem">
         <label>Judge Context / Reference Standards (optional — used for domain-aware scoring)</label>
-        <textarea id="mgrContext" placeholder="Paste your organization's standards, best practices, and guidelines here. The judge will score responses against this content." style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.75rem;font-size:0.85rem;min-height:120px;width:100%;resize:vertical"></textarea>
+        <div style="display:flex;gap:0.5rem;margin-bottom:0.3rem">
+          <label style="background:var(--surface2);padding:0.3rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.8rem;color:var(--accent)">
+            Upload .md / .txt files
+            <input type="file" id="mgrContextFiles" multiple accept=".md,.txt,.markdown" style="display:none" onchange="handleContextUpload(this)">
+          </label>
+          <span id="mgrContextFileStatus" style="color:var(--text2);font-size:0.8rem;align-self:center"></span>
+        </div>
+        <textarea id="mgrContext" placeholder="Paste your organization's standards, best practices, and guidelines here. Or use the upload button above to load from .md/.txt files." style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.75rem;font-size:0.85rem;min-height:120px;width:100%;resize:vertical"></textarea>
+      </div>
+
+      <div class="form-group" style="margin-bottom:0.75rem">
+        <label>System Prompt — Upload from file (optional)</label>
+        <div style="display:flex;gap:0.5rem">
+          <label style="background:var(--surface2);padding:0.3rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.8rem;color:var(--accent)">
+            Upload .md / .txt file
+            <input type="file" id="mgrPromptFile" accept=".md,.txt,.markdown" style="display:none" onchange="handlePromptUpload(this)">
+          </label>
+          <span id="mgrPromptFileStatus" style="color:var(--text2);font-size:0.8rem;align-self:center"></span>
+        </div>
       </div>
 
       <details style="margin-bottom:0.75rem">
         <summary style="cursor:pointer;color:var(--accent);font-size:0.9rem">Add Test Cases (JSON format)</summary>
-        <textarea id="mgrTests" placeholder='[{"id":"TEST-01","category":"General","question":"...","criteria":["...","..."],"weight":2}]' style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.75rem;font-size:0.8rem;font-family:monospace;min-height:120px;width:100%;resize:vertical;margin-top:0.5rem"></textarea>
-        <p style="color:var(--text2);font-size:0.75rem;margin-top:0.3rem">Tip: Use the Generate Tests tab to create test cases, then paste the JSON here.</p>
+        <div style="display:flex;gap:0.5rem;margin:0.5rem 0">
+          <label style="background:var(--surface2);padding:0.3rem 0.8rem;border-radius:6px;cursor:pointer;font-size:0.8rem;color:var(--accent)">
+            Upload .json file
+            <input type="file" id="mgrTestsFile" accept=".json" style="display:none" onchange="handleTestsUpload(this)">
+          </label>
+          <span id="mgrTestsFileStatus" style="color:var(--text2);font-size:0.8rem;align-self:center"></span>
+        </div>
+        <textarea id="mgrTests" placeholder='[{"id":"TEST-01","category":"General","question":"...","criteria":["...","..."],"weight":2}]' style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.75rem;font-size:0.8rem;font-family:monospace;min-height:120px;width:100%;resize:vertical"></textarea>
+        <p style="color:var(--text2);font-size:0.75rem;margin-top:0.3rem">Tip: Use the Generate Tests tab to create test cases, download as JSON, then upload here.</p>
       </details>
 
       <div style="display:flex;gap:0.5rem">
@@ -1608,6 +1661,53 @@ function getPromptValue(selectId, textareaId) {
     return 'custom:' + document.getElementById(textareaId).value;
   }
   return sel.value;
+}
+
+// ── File Upload Handlers ──
+function handlePromptUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('mgrPrompt').value = e.target.result;
+    document.getElementById('mgrPromptFileStatus').textContent = 'Loaded: ' + file.name + ' (' + e.target.result.length + ' chars)';
+  };
+  reader.readAsText(file);
+}
+
+function handleContextUpload(input) {
+  const files = input.files;
+  if (!files.length) return;
+  let combined = '';
+  let loaded = 0;
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      combined += '\\n\\n--- ' + file.name + ' ---\\n' + e.target.result;
+      loaded++;
+      if (loaded === files.length) {
+        document.getElementById('mgrContext').value = combined.trim();
+        document.getElementById('mgrContextFileStatus').textContent = loaded + ' file(s) loaded (' + combined.length + ' chars)';
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+
+function handleTestsUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const tests = JSON.parse(e.target.result);
+      document.getElementById('mgrTests').value = JSON.stringify(tests, null, 2);
+      document.getElementById('mgrTestsFileStatus').textContent = 'Loaded: ' + file.name + ' (' + (Array.isArray(tests) ? tests.length + ' tests' : 'parsed') + ')';
+    } catch(err) {
+      document.getElementById('mgrTestsFileStatus').textContent = 'Error: ' + err.message;
+    }
+  };
+  reader.readAsText(file);
 }
 
 // ── Manage Roles ──
