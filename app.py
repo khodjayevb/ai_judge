@@ -763,6 +763,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <div class="progress-text" id="evalText">Starting...</div>
       </div>
       <div class="result-flash" id="evalResult"></div>
+      <h3 style="margin-top:1.5rem;color:var(--accent)">Evaluation History</h3>
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+        <button class="btn" style="background:var(--surface2);color:var(--text);font-size:0.75rem;padding:0.3rem 0.6rem" onclick="exportCSV('evaluation')">Export CSV</button>
+      </div>
+      <div id="evalHistory" style="max-height:300px;overflow-y:auto"></div>
     </div>
   </div>
 
@@ -845,6 +850,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <div class="progress-text" id="cmpText">Starting...</div>
       </div>
       <div class="result-flash" id="cmpResult"></div>
+      <h3 style="margin-top:1.5rem;color:var(--accent)">Comparison History</h3>
+      <div id="cmpHistory" style="max-height:300px;overflow-y:auto"></div>
     </div>
   </div>
 
@@ -898,6 +905,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <div class="progress-text" id="rtText">Running adversarial attacks...</div>
       </div>
       <div class="result-flash" id="rtResult"></div>
+      <h3 style="margin-top:1.5rem;color:var(--accent)">Red Team History</h3>
+      <div id="rtHistory" style="max-height:300px;overflow-y:auto"></div>
     </div>
   </div>
 
@@ -1000,53 +1009,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <div class="progress-text" id="calText">Calibrating...</div>
       </div>
       <div class="result-flash" id="calResult"></div>
+      <h3 style="margin-top:1.5rem;color:var(--accent)">Calibration History</h3>
+      <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.5rem">Run calibration multiple times to track judge consistency over time.</p>
+      <div id="calHistory" style="max-height:300px;overflow-y:auto"></div>
     </div>
   </div>
-
-  <!-- ═══ HISTORY ═══ -->
-  <h2>Evaluation History</h2>
-  <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem">
-    <select id="historyFilter" onchange="filterHistory()" style="background:var(--bg);color:var(--text);padding:0.4rem 0.8rem;border-radius:6px;border:1px solid var(--surface2)">
-      <option value="">All Roles</option>
-      {% for r in roles %}
-      <option value="{{ r.slug }}">{{ r.name }}</option>
-      {% endfor %}
-    </select>
-    <button class="btn" style="background:var(--surface2);color:var(--text);font-size:0.85rem;padding:0.4rem 1rem" onclick="exportCSV()">Export to CSV</button>
-  </div>
-  <table class="history-table">
-    <thead>
-      <tr>
-        <th>#</th><th>Timestamp</th><th>Role</th><th>Model</th><th>Judge</th>
-        <th>GEval</th><th>DAG</th><th>Combined</th><th>Grade</th>
-        <th>Tests</th><th>Latency</th><th>Cost</th>
-        <th>Type</th><th>Report</th>
-      </tr>
-    </thead>
-    <tbody id="historyBody">
-      {% for run in history %}
-      <tr data-role="{{ run.role }}">
-        <td>{{ run.id }}</td>
-        <td style="white-space:nowrap">{{ run.timestamp[:10] }} {{ run.timestamp[11:16] }}</td>
-        <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ run.role }}">{{ run.role }}</td>
-        <td>{{ run.model or 'demo' }}</td>
-        <td>{{ run.judge_model or '-' }}</td>
-        <td>{{ run.overall_pct }}%</td>
-        <td>{{ '%.1f' % run.dag_pct if run.dag_pct else '-' }}%</td>
-        <td style="font-weight:700">{{ '%.1f' % run.consolidated_pct if run.consolidated_pct else run.overall_pct }}%</td>
-        <td><span class="grade-badge grade-{{ (run.consolidated_grade or run.grade or 'd')[0].lower() }}">{{ run.consolidated_grade or run.grade }}</span></td>
-        <td>{{ run.num_tests }}</td>
-        <td>{{ '%.1f' % run.avg_latency if run.avg_latency else '-' }}s</td>
-        <td>{{ '$%.4f' % run.estimated_cost if run.estimated_cost else '-' }}</td>
-        <td>{{ run.run_type }}</td>
-        <td>{% if run.report_path %}<a href="/reports/{{ run.report_path.split('/')[-1].split('\\')[-1] }}" target="_blank">View</a>{% else %}-{% endif %}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% if not history %}
-  <p style="color:var(--text2);text-align:center;padding:2rem">No evaluation runs yet. Run your first evaluation above.</p>
-  {% endif %}
 
   <div class="footer">
     <p>AI Evaluation Framework — DCRI Clinical Trials Data Management</p>
@@ -1061,7 +1028,11 @@ function switchTab(tab) {
   document.querySelector(`.tab-content#tab-${tab}`).classList.add('active');
   event.target.classList.add('active');
   setTimeout(updateHeaderTarget, 50);
+  refreshHistory();
 }
+
+// Load history on page load
+document.addEventListener('DOMContentLoaded', () => refreshHistory());
 
 // Custom model inputs + update header
 const defaultModel = '{{ config.TARGET_MODEL }}';
@@ -1531,37 +1502,67 @@ function showResult(job, prefix) {
 
 function refreshHistory() {
   fetch('/api/history').then(r => r.json()).then(runs => {
-    document.getElementById('historyBody').innerHTML = runs.map(run => `
-      <tr data-role="${run.role}">
-        <td>${run.id}</td>
-        <td style="white-space:nowrap">${(run.timestamp||'').substring(0,10)} ${(run.timestamp||'').substring(11,16)}</td>
-        <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${run.role}">${run.role}</td>
-        <td>${run.model || 'demo'}</td>
-        <td>${run.judge_model || '-'}</td>
-        <td>${run.overall_pct}%</td>
-        <td>${run.dag_pct ? run.dag_pct.toFixed(1) + '%' : '-'}</td>
-        <td style="font-weight:700">${run.consolidated_pct ? run.consolidated_pct.toFixed(1) : run.overall_pct}%</td>
-        <td><span class="grade-badge grade-${((run.consolidated_grade||run.grade||'d')[0]).toLowerCase()}">${run.consolidated_grade||run.grade}</span></td>
-        <td>${run.num_tests}</td>
-        <td>${run.avg_latency ? run.avg_latency.toFixed(1) + 's' : '-'}</td>
-        <td>${run.estimated_cost ? '$' + run.estimated_cost.toFixed(4) : '-'}</td>
-        <td>${run.run_type}</td>
-        <td>${run.report_path ? '<a href="/reports/' + run.report_path.split(/[/\\]/).pop() + '" target="_blank">View</a>' : '-'}</td>
-      </tr>`).join('');
+    // Evaluation history
+    const evalRuns = runs.filter(r => r.run_type === 'evaluation');
+    const evalEl = document.getElementById('evalHistory');
+    if (evalEl) evalEl.innerHTML = evalRuns.length ? buildHistoryTable(evalRuns) : '<p style="color:var(--text2);font-size:0.85rem;padding:0.5rem">No evaluations yet.</p>';
+
+    // Comparison history
+    const cmpRuns = runs.filter(r => r.run_type && r.run_type.startsWith('comparison'));
+    const cmpEl = document.getElementById('cmpHistory');
+    if (cmpEl) cmpEl.innerHTML = cmpRuns.length ? buildHistoryTable(cmpRuns) : '<p style="color:var(--text2);font-size:0.85rem;padding:0.5rem">No comparisons yet.</p>';
+
+    // Red team history
+    const rtRuns = runs.filter(r => r.run_type === 'red_team');
+    const rtEl = document.getElementById('rtHistory');
+    if (rtEl) rtEl.innerHTML = rtRuns.length ? buildRedTeamTable(rtRuns) : '<p style="color:var(--text2);font-size:0.85rem;padding:0.5rem">No red team runs yet.</p>';
+
+    // Calibration — not in DB yet, skip for now
   });
 }
 
-function filterHistory() {
-  const role = document.getElementById('historyFilter').value;
-  document.querySelectorAll('#historyBody tr').forEach(r => {
-    r.style.display = (!role || r.dataset.role === role) ? '' : 'none';
-  });
+function buildHistoryTable(runs) {
+  return `<table class="history-table" style="font-size:0.8rem">
+    <thead><tr>
+      <th>#</th><th>Timestamp</th><th>Role</th><th>Model</th><th>Judge</th>
+      <th>GEval</th><th>DAG</th><th>Combined</th><th>Grade</th>
+      <th>Tests</th><th>Latency</th><th>Cost</th><th>Report</th>
+    </tr></thead>
+    <tbody>${runs.map(run => `<tr>
+      <td>${run.id}</td>
+      <td style="white-space:nowrap">${(run.timestamp||'').substring(0,10)} ${(run.timestamp||'').substring(11,16)}</td>
+      <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${run.role}">${run.role}</td>
+      <td>${run.model || 'demo'}</td>
+      <td>${run.judge_model || '-'}</td>
+      <td>${run.overall_pct}%</td>
+      <td>${run.dag_pct ? run.dag_pct.toFixed(1) + '%' : '-'}</td>
+      <td style="font-weight:700">${run.consolidated_pct ? run.consolidated_pct.toFixed(1) : run.overall_pct}%</td>
+      <td><span class="grade-badge grade-${((run.consolidated_grade||run.grade||'d')[0]).toLowerCase()}">${run.consolidated_grade||run.grade}</span></td>
+      <td>${run.num_tests}</td>
+      <td>${run.avg_latency ? run.avg_latency.toFixed(1) + 's' : '-'}</td>
+      <td>${run.estimated_cost ? '$' + run.estimated_cost.toFixed(4) : '-'}</td>
+      <td>${run.report_path ? '<a href="/reports/' + run.report_path.split(/[/\\]/).pop() + '" target="_blank">View</a>' : '-'}</td>
+    </tr>`).join('')}</tbody></table>`;
 }
 
-function exportCSV() {
+function buildRedTeamTable(runs) {
+  return `<table class="history-table" style="font-size:0.8rem">
+    <thead><tr><th>#</th><th>Timestamp</th><th>Role</th><th>Model</th><th>Pass Rate</th><th>Grade</th><th>Report</th></tr></thead>
+    <tbody>${runs.map(run => `<tr>
+      <td>${run.id}</td>
+      <td style="white-space:nowrap">${(run.timestamp||'').substring(0,10)} ${(run.timestamp||'').substring(11,16)}</td>
+      <td>${run.role}</td>
+      <td>${run.model || 'demo'}</td>
+      <td>${run.overall_pct}%</td>
+      <td><span class="grade-badge grade-${run.overall_pct >= 90 ? 'a' : run.overall_pct >= 70 ? 'b' : 'd'}">${run.grade || (run.overall_pct >= 90 ? 'PASS' : 'FAIL')}</span></td>
+      <td>${run.report_path ? '<a href="/reports/' + run.report_path.split(/[/\\]/).pop() + '" target="_blank">View</a>' : '-'}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+
+function exportCSV(runType) {
   fetch('/api/history').then(r => r.json()).then(runs => {
-    const role = document.getElementById('historyFilter').value;
-    const filtered = role ? runs.filter(r => r.role === role) : runs;
+    let filtered = runs;
+    if (runType) filtered = runs.filter(r => r.run_type && r.run_type.startsWith(runType));
 
     const headers = ['ID','Timestamp','Role','Model','Judge Model','GEval %','DAG %','Combined %','Grade','Tests','Criteria',
       'Avg Latency (s)','P95 Latency (s)','Total Tokens','Est Cost (USD)','Duration (s)','Type','Notes'];
