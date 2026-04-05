@@ -1363,6 +1363,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <a href="#doc-roles" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Roles</a>
         <a href="#doc-glossary" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Glossary</a>
         <a href="#doc-code" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Code Examples</a>
+        <a href="#doc-features" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--purple);text-decoration:none;font-size:0.8rem">Features</a>
         <a href="#doc-faq" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">FAQ</a>
       </div>
 
@@ -1576,6 +1577,125 @@ python generate_tests.py --role power_bi_engineer --count 10
 python app.py</code></pre>
 
       <!-- FAQ -->
+      <!-- Features -->
+      <h3 id="doc-features" style="color:var(--purple);margin-top:2rem">Features Guide</h3>
+
+      <h4 style="color:var(--text);margin-top:1rem">Manage Roles</h4>
+      <div style="background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:1rem">
+        <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">Create, edit, and manage AI assistant roles entirely from the UI. No need to edit code files manually.</p>
+        <table class="history-table" style="font-size:0.8rem;margin-top:0.5rem">
+          <thead><tr><th>Action</th><th>How</th><th>What happens</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--accent)">Create Role</td><td>Fill in slug, name, domain, prompt → Create</td><td>Creates <code>prompts/{slug}.py</code>, <code>test_suites/{slug}_tests.py</code>, <code>docs/{slug}/</code></td></tr>
+            <tr><td style="color:var(--accent)">Edit Role</td><td>Click role card → edit fields → Update</td><td>Modifies the Python file directly + saves version snapshot</td></tr>
+            <tr><td style="color:var(--accent)">Upload Files</td><td>Use upload buttons for prompt (.md/.txt), context (multiple .md/.txt), tests (.json)</td><td>File content loaded into form fields for review before saving</td></tr>
+            <tr><td style="color:var(--accent)">Custom Prompt</td><td>Select "Custom (paste your own)" in evaluation dropdown</td><td>Sends your pasted text as the system prompt without modifying files</td></tr>
+          </tbody>
+        </table>
+        <p style="color:var(--text2);font-size:0.8rem;margin-top:0.5rem"><strong>Note:</strong> Changes are written to codebase files. Use <code>git diff</code> to review before committing.</p>
+      </div>
+
+      <h4 style="color:var(--text);margin-top:1rem">Version Control</h4>
+      <div style="background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:1rem">
+        <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">Every role change is versioned automatically. Track what changed, when, and why.</p>
+        <table class="history-table" style="font-size:0.8rem;margin-top:0.5rem">
+          <thead><tr><th>Feature</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--accent)">Auto-versioning</td><td>Every create/update saves a snapshot with timestamp, content hash, and change note</td></tr>
+            <tr><td style="color:var(--accent)">Change Notes</td><td>Required on update — describe what you changed and why (e.g., "Added DAX performance guidelines")</td></tr>
+            <tr><td style="color:var(--accent)">View Version</td><td>See the full prompt and context for any past version</td></tr>
+            <tr><td style="color:var(--accent)">Side-by-Side Diff</td><td>Compare two versions side-by-side — previous (red) vs current (green) for both prompt and context</td></tr>
+            <tr><td style="color:var(--accent)">Restore Version</td><td>Load any past version into the form and re-save to roll back changes</td></tr>
+            <tr><td style="color:var(--accent)">Content Hashes</td><td>Quick visual indicator of whether prompt/tests/context changed between versions</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 style="color:var(--text);margin-top:1rem">Auto-Improve Prompt</h4>
+      <div style="background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:1rem">
+        <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">Automatically generates an improved system prompt based on evaluation weaknesses.</p>
+        <ol style="color:var(--text2);font-size:0.85rem;padding-left:1.2rem;line-height:1.8">
+          <li>Run an evaluation → see results with score and weak areas</li>
+          <li>Click <strong style="color:var(--purple)">"Auto-Improve Prompt"</strong> button in the results</li>
+          <li>System analyzes criteria that scored below 70% and failed DAG dimensions</li>
+          <li>Judge model generates an improved prompt addressing the weak areas</li>
+          <li>Review the changes summary and the full improved prompt</li>
+          <li>Click <strong>"Evaluate This Prompt"</strong> to test the improvement immediately</li>
+          <li>Click <strong>"Copy to Clipboard"</strong> to save the improved prompt</li>
+        </ol>
+        <p style="color:var(--text2);font-size:0.8rem;margin-top:0.5rem"><strong>Tip:</strong> The improver keeps everything that's working well and only adds targeted instructions for weak areas.</p>
+      </div>
+
+      <h4 style="color:var(--text);margin-top:1rem">Multi-Run Averaging</h4>
+      <div style="background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:1rem">
+        <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">Reduce score variance by running the same evaluation multiple times and averaging.</p>
+        <table class="history-table" style="font-size:0.8rem;margin-top:0.5rem">
+          <thead><tr><th>Runs</th><th>Use case</th><th>Time</th></tr></thead>
+          <tbody>
+            <tr><td>1x</td><td>Quick check, development iteration</td><td>~5 min</td></tr>
+            <tr><td>2x</td><td>Better signal, moderate confidence</td><td>~10 min</td></tr>
+            <tr><td>3x (avg)</td><td>Recommended for tracking — good balance of speed and reliability</td><td>~15 min</td></tr>
+            <tr><td>5x (avg)</td><td>Highest confidence — use for final benchmarks or comparisons</td><td>~25 min</td></tr>
+          </tbody>
+        </table>
+        <p style="color:var(--text2);font-size:0.8rem;margin-top:0.5rem"><strong>Why it matters:</strong> Single runs can vary 5-10% due to non-deterministic model responses. Averaging 3x reduces this to ~2-3% variance.</p>
+      </div>
+
+      <h4 style="color:var(--text);margin-top:1rem">Judge Calibration</h4>
+      <div style="background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:1rem">
+        <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">Validates that your judge model scores accurately using a gold standard test set.</p>
+        <table class="history-table" style="font-size:0.8rem;margin-top:0.5rem">
+          <thead><tr><th>Gold Standard Type</th><th>Count</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--green)">Excellent responses</td><td>2</td><td>Detailed, specific, correct — should score ~0.9</td></tr>
+            <tr><td style="color:var(--yellow)">Adequate responses</td><td>2</td><td>Mentioned but vague — should score ~0.3</td></tr>
+            <tr><td style="color:var(--red)">Poor responses</td><td>2</td><td>Generic, useless — should score ~0.0</td></tr>
+            <tr><td style="color:var(--orange)">Misleading responses</td><td>2</td><td>Confidently wrong (recommends deprecated tech) — should score 0.0</td></tr>
+          </tbody>
+        </table>
+        <p style="color:var(--text2);font-size:0.85rem;margin-top:0.5rem"><strong>Key metrics:</strong></p>
+        <ul style="color:var(--text2);font-size:0.85rem;padding-left:1.2rem">
+          <li><strong>Accuracy:</strong> % of scores within 0.25 of expected — target &gt; 80%</li>
+          <li><strong>Discrimination:</strong> gap between excellent and poor avg scores — target &gt; 0.5</li>
+          <li><strong>Consistency Issues:</strong> cases where excellent scored low or poor scored high</li>
+        </ul>
+        <p style="color:var(--text2);font-size:0.8rem;margin-top:0.5rem"><strong>When to run:</strong> After changing judge model, adding reference docs, or updating the scoring rubric.</p>
+      </div>
+
+      <h4 style="color:var(--text);margin-top:1rem">Domain-Aware Judge</h4>
+      <div style="background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:1rem">
+        <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">Two mechanisms make the judge score against your standards, not generic knowledge:</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:0.5rem">
+          <div style="border:1px solid var(--surface2);border-radius:6px;padding:0.75rem">
+            <h5 style="color:var(--accent);margin-bottom:0.3rem">Judge Context Injection</h5>
+            <p style="color:var(--text2);font-size:0.8rem">Reference docs from <code>docs/{role}/</code> are injected into every GEval prompt. The judge sees your org's standards and scores accordingly.</p>
+            <p style="color:var(--text2);font-size:0.8rem;margin-top:0.3rem"><em>Example: A response saying "use encryption" scores lower than "use AES-256 with CMK in FIPS 140-2 Key Vault" because the judge knows your standard requires the latter.</em></p>
+          </div>
+          <div style="border:1px solid var(--surface2);border-radius:6px;padding:0.75rem">
+            <h5 style="color:var(--accent);margin-bottom:0.3rem">Scoring Rubric</h5>
+            <p style="color:var(--text2);font-size:0.8rem">A 6-level rubric (1.0 Excellent → 0.0 Not Addressed) is included in every judge prompt, with concrete examples for each level.</p>
+            <p style="color:var(--text2);font-size:0.8rem;margin-top:0.3rem"><em>The judge applies the same scoring standard to every criterion, regardless of topic.</em></p>
+          </div>
+        </div>
+        <p style="color:var(--text2);font-size:0.8rem;margin-top:0.5rem"><strong>Status in reports:</strong> Check "Evaluation Setup" section → Judge Context shows ACTIVE/NONE with doc names and char count.</p>
+      </div>
+
+      <h4 style="color:var(--text);margin-top:1rem">Safety Metrics</h4>
+      <div style="background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:1rem">
+        <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">Every model response is automatically checked for safety issues:</p>
+        <table class="history-table" style="font-size:0.8rem;margin-top:0.5rem">
+          <thead><tr><th>Metric</th><th>What it detects</th><th>Scoring</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--accent)">Bias</td><td>Gender, racial, political, religious bias</td><td>0.0 = no bias, 1.0 = fully biased</td></tr>
+            <tr><td style="color:var(--accent)">Toxicity</td><td>Personal attacks, hate speech, dismissive language</td><td>0.0 = professional, 1.0 = toxic</td></tr>
+            <tr><td style="color:var(--accent)">PII Leakage</td><td>Real PII/PHI in responses (not illustrative examples)</td><td>0.0 = safe, 1.0 = PII found</td></tr>
+            <tr><td style="color:var(--accent)">Hallucination</td><td>Fabricated facts contradicting ground truth context</td><td>0.0 = faithful, 1.0 = hallucinated</td></tr>
+          </tbody>
+        </table>
+        <p style="color:var(--text2);font-size:0.8rem;margin-top:0.5rem"><strong>Pass threshold:</strong> score &le; 0.5. Responses above 0.5 are flagged with full details in the report.</p>
+        <p style="color:var(--text2);font-size:0.8rem"><strong>PII note:</strong> Illustrative examples (john@contoso.com in tutorials, column names like 'Email') are NOT flagged — only real PII that could identify an actual person.</p>
+      </div>
+
       <h3 id="doc-faq" style="color:var(--accent);margin-top:2rem">FAQ</h3>
 
       <details style="margin-bottom:0.75rem">
