@@ -327,7 +327,29 @@ def _create_client(cfg: dict):
 _client_cache: dict[str, callable] = {}
 
 
-def _get_target_client():
+def _get_role_assistant_id(role_slug: str) -> str | None:
+    """Check if this role has a Foundry Assistant ID mapped."""
+    mapping_path = Path("role_assistants.json")
+    if mapping_path.exists():
+        import json
+        mappings = json.loads(mapping_path.read_text(encoding="utf-8"))
+        return mappings.get(role_slug)
+    return None
+
+
+def _get_target_client(role_slug: str = ""):
+    """Get or create the target client. Uses per-role assistant if mapped."""
+    # Check for per-role assistant mapping
+    if role_slug and config.TARGET_PROVIDER == "azure_assistant":
+        assistant_id = _get_role_assistant_id(role_slug)
+        if assistant_id:
+            cache_key = f"target_{role_slug}"
+            if cache_key not in _client_cache:
+                cfg = config.get_target_config()
+                cfg["deployment"] = assistant_id
+                _client_cache[cache_key] = _create_client(cfg)
+            return _client_cache[cache_key]
+
     if "target" not in _client_cache:
         _client_cache["target"] = _create_client(config.get_target_config())
     return _client_cache["target"]
@@ -367,6 +389,6 @@ def chat(
         )
 
     resolved_prompt = resolve_system_prompt(system_prompt)
-    client_fn = _get_target_client()
+    client_fn = _get_target_client(role_slug=role_slug)
     return client_fn(resolved_prompt, user_message,
                      temperature=temperature if temperature is not None else config.TEMPERATURE)

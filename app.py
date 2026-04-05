@@ -457,6 +457,72 @@ def api_calibration_history():
     return jsonify(get_calibration_runs())
 
 
+@app.route("/api/settings")
+def api_get_settings():
+    """Get current .env settings."""
+    env_path = Path(".env")
+    settings = {}
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, _, value = line.partition("=")
+                settings[key.strip()] = value.strip()
+
+    # Load per-role assistant mappings from a separate file
+    mapping_path = Path("role_assistants.json")
+    role_assistants = {}
+    if mapping_path.exists():
+        import json as _json
+        role_assistants = _json.loads(mapping_path.read_text(encoding="utf-8"))
+
+    return jsonify({"settings": settings, "role_assistants": role_assistants})
+
+
+@app.route("/api/settings", methods=["POST"])
+def api_save_settings():
+    """Save settings to .env and role assistant mappings."""
+    data = request.json
+    settings = data.get("settings", {})
+    role_assistants = data.get("role_assistants", {})
+
+    # Write .env
+    env_lines = [
+        "# ============================================================================",
+        "# AI Evaluation Framework — BYOK Configuration",
+        "# ============================================================================",
+        "",
+        f"EVAL_MODE={settings.get('EVAL_MODE', 'live')}",
+        f"EVAL_ROLE={settings.get('EVAL_ROLE', 'azure_data_engineer')}",
+        "",
+        f"TARGET_PROVIDER={settings.get('TARGET_PROVIDER', 'azure')}",
+        f"TARGET_API_KEY={settings.get('TARGET_API_KEY', '')}",
+        f"TARGET_MODEL={settings.get('TARGET_MODEL', 'gpt-4o')}",
+        f"TARGET_BASE_URL={settings.get('TARGET_BASE_URL', '')}",
+        f"TARGET_API_VERSION={settings.get('TARGET_API_VERSION', '2024-08-01-preview')}",
+        f"TARGET_DEPLOYMENT={settings.get('TARGET_DEPLOYMENT', '')}",
+        f"TARGET_SYSTEM_PROMPT={settings.get('TARGET_SYSTEM_PROMPT', 'local')}",
+        "",
+        f"JUDGE_PROVIDER={settings.get('JUDGE_PROVIDER', '')}",
+        f"JUDGE_API_KEY={settings.get('JUDGE_API_KEY', '')}",
+        f"JUDGE_MODEL={settings.get('JUDGE_MODEL', '')}",
+        f"JUDGE_BASE_URL={settings.get('JUDGE_BASE_URL', '')}",
+        f"JUDGE_DEPLOYMENT={settings.get('JUDGE_DEPLOYMENT', '')}",
+        "",
+    ]
+    Path(".env").write_text("\n".join(env_lines), encoding="utf-8")
+
+    # Write role-assistant mappings
+    import json as _json
+    Path("role_assistants.json").write_text(
+        _json.dumps(role_assistants, indent=2), encoding="utf-8"
+    )
+
+    return jsonify({"success": True, "message": "Settings saved. Restart dashboard to apply."})
+
+
 @app.route("/api/role/<slug>")
 def api_get_role(slug):
     """Get full details for a role: prompt, test cases, context."""
@@ -923,6 +989,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="tab" onclick="switchTab('redteam')">Red Team</div>
     <div class="tab" onclick="switchTab('generate')">Generate Tests</div>
     <div class="tab" onclick="switchTab('calibrate')">Judge Calibration</div>
+    <div class="tab" onclick="switchTab('settings')">Settings</div>
     <div class="tab" onclick="switchTab('manage')">Manage Roles</div>
     <div class="tab" onclick="switchTab('docs')">Docs</div>
   </div>
@@ -1234,6 +1301,101 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <h3 style="margin-top:1.5rem;color:var(--accent)">Calibration History</h3>
       <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.5rem">Run calibration multiple times to track judge consistency over time.</p>
       <div id="calHistory" style="max-height:300px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <!-- ═══ SETTINGS TAB ═══ -->
+  <div class="tab-content" id="tab-settings">
+    <div class="panel">
+      <div class="panel-title">Settings</div>
+      <p style="color:var(--text2);font-size:0.85rem;margin-bottom:1rem">Configure target model, judge model, and per-role Foundry Assistant mappings. Changes saved to <code>.env</code> — restart dashboard to apply.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+        <!-- Target Model -->
+        <div style="background:var(--bg);border-radius:8px;padding:1.25rem">
+          <h4 style="color:var(--accent);margin-bottom:0.75rem">Target Model</h4>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Provider</label>
+            <select id="setTargetProvider">
+              <option value="azure">Azure OpenAI</option>
+              <option value="azure_assistant">Azure Foundry Assistant</option>
+              <option value="azure_foundry">Azure AI Foundry</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic / Claude</option>
+              <option value="google">Google Gemini</option>
+              <option value="ollama">Ollama (local)</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>API Key</label>
+            <input type="password" id="setTargetKey" placeholder="API key">
+          </div>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Model / Deployment</label>
+            <input type="text" id="setTargetModel" placeholder="e.g., gpt-4o, gpt-4.1">
+          </div>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Base URL</label>
+            <input type="text" id="setTargetURL" placeholder="https://your-resource.openai.azure.com">
+          </div>
+          <div class="form-group">
+            <label>API Version</label>
+            <input type="text" id="setTargetVersion" placeholder="2024-08-01-preview">
+          </div>
+        </div>
+
+        <!-- Judge Model -->
+        <div style="background:var(--bg);border-radius:8px;padding:1.25rem">
+          <h4 style="color:var(--purple);margin-bottom:0.75rem">Judge Model</h4>
+          <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.5rem">Leave empty to use same as target.</p>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Provider</label>
+            <select id="setJudgeProvider">
+              <option value="">(same as target)</option>
+              <option value="azure">Azure OpenAI</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic / Claude</option>
+              <option value="google">Google Gemini</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>API Key</label>
+            <input type="password" id="setJudgeKey" placeholder="(falls back to target)">
+          </div>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Model / Deployment</label>
+            <input type="text" id="setJudgeModel" placeholder="e.g., gpt-5.4">
+          </div>
+          <div class="form-group">
+            <label>Base URL</label>
+            <input type="text" id="setJudgeURL" placeholder="(falls back to target)">
+          </div>
+        </div>
+      </div>
+
+      <!-- Per-Role Assistant Mapping -->
+      <h4 style="color:var(--accent);margin-top:1.5rem;margin-bottom:0.5rem">Per-Role Foundry Assistant Mapping</h4>
+      <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.75rem">
+        Map each role to a Foundry Assistant ID. When provider is <code>azure_assistant</code>, the framework calls the assistant by ID instead of Chat Completions.
+      </p>
+      <table class="history-table" style="font-size:0.85rem" id="assistantMappingTable">
+        <thead><tr><th>Role</th><th>Assistant ID</th><th>Description</th></tr></thead>
+        <tbody>
+          {% for r in roles %}
+          <tr>
+            <td style="color:var(--accent);font-weight:600">{{ r.slug }}</td>
+            <td><input type="text" id="asst_{{ r.slug }}" placeholder="asst_abc123..." style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:4px;padding:0.3rem 0.5rem;width:100%;font-size:0.85rem;font-family:monospace"></td>
+            <td style="color:var(--text2);font-size:0.8rem">{{ r.name }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div style="display:flex;gap:0.5rem;margin-top:1rem">
+        <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+        <button class="btn" style="background:var(--surface2);color:var(--text)" onclick="loadSettings()">Reload from .env</button>
+      </div>
+      <div class="result-flash" id="settingsResult" style="margin-top:0.75rem"></div>
     </div>
   </div>
 
@@ -1848,6 +2010,72 @@ function getPromptValue(selectId, textareaId) {
   }
   return sel.value;
 }
+
+// ── Settings ──
+function loadSettings() {
+  fetch('/api/settings').then(r => r.json()).then(data => {
+    const s = data.settings || {};
+    document.getElementById('setTargetProvider').value = s.TARGET_PROVIDER || 'azure';
+    document.getElementById('setTargetKey').value = s.TARGET_API_KEY || '';
+    document.getElementById('setTargetModel').value = s.TARGET_MODEL || s.TARGET_DEPLOYMENT || '';
+    document.getElementById('setTargetURL').value = s.TARGET_BASE_URL || '';
+    document.getElementById('setTargetVersion').value = s.TARGET_API_VERSION || '2024-08-01-preview';
+    document.getElementById('setJudgeProvider').value = s.JUDGE_PROVIDER || '';
+    document.getElementById('setJudgeKey').value = s.JUDGE_API_KEY || '';
+    document.getElementById('setJudgeModel').value = s.JUDGE_MODEL || s.JUDGE_DEPLOYMENT || '';
+    document.getElementById('setJudgeURL').value = s.JUDGE_BASE_URL || '';
+
+    // Load assistant mappings
+    const ra = data.role_assistants || {};
+    for (const [slug, id] of Object.entries(ra)) {
+      const el = document.getElementById('asst_' + slug);
+      if (el) el.value = id;
+    }
+  });
+}
+
+function saveSettings() {
+  const settings = {
+    EVAL_MODE: 'live',
+    TARGET_PROVIDER: document.getElementById('setTargetProvider').value,
+    TARGET_API_KEY: document.getElementById('setTargetKey').value,
+    TARGET_MODEL: document.getElementById('setTargetModel').value,
+    TARGET_DEPLOYMENT: document.getElementById('setTargetModel').value,
+    TARGET_BASE_URL: document.getElementById('setTargetURL').value,
+    TARGET_API_VERSION: document.getElementById('setTargetVersion').value,
+    JUDGE_PROVIDER: document.getElementById('setJudgeProvider').value,
+    JUDGE_API_KEY: document.getElementById('setJudgeKey').value,
+    JUDGE_MODEL: document.getElementById('setJudgeModel').value,
+    JUDGE_DEPLOYMENT: document.getElementById('setJudgeModel').value,
+    JUDGE_BASE_URL: document.getElementById('setJudgeURL').value,
+  };
+
+  // Collect assistant mappings
+  const role_assistants = {};
+  document.querySelectorAll('[id^="asst_"]').forEach(el => {
+    const slug = el.id.replace('asst_', '');
+    if (el.value.trim()) role_assistants[slug] = el.value.trim();
+  });
+
+  fetch('/api/settings', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({settings, role_assistants})
+  }).then(r => r.json()).then(d => {
+    const flash = document.getElementById('settingsResult');
+    flash.classList.add('active');
+    if (d.success) {
+      flash.className = 'result-flash active success';
+      flash.innerHTML = '<strong>Settings saved!</strong> Restart the dashboard to apply changes.';
+    } else {
+      flash.className = 'result-flash active error';
+      flash.innerHTML = '<strong>Error:</strong> ' + (d.error || d.message);
+    }
+  });
+}
+
+// Load settings on tab switch
+document.addEventListener('DOMContentLoaded', () => { setTimeout(loadSettings, 500); });
 
 // ── File Upload Handlers ──
 function handlePromptUpload(input) {
