@@ -1372,8 +1372,14 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <p style="color:var(--text2);line-height:1.8;margin-bottom:1rem">
         This framework evaluates how well AI assistants perform by testing them against domain-specific criteria.
         It sends questions to a <strong>target model</strong>, then uses a separate <strong>judge model</strong> to score the responses
-        using two complementary methods: <strong>GEval</strong> (nuanced, LLM-based) and <strong>DAG</strong> (deterministic, decision-tree based).
-        Safety metrics check every response for bias, toxicity, PII leakage, and hallucination.
+        using two complementary methods: <a href="https://deepeval.com/docs/metrics-llm-evals" target="_blank" style="color:var(--accent)"><strong>GEval</strong></a> (nuanced, LLM-based) and
+        <a href="https://deepeval.com/docs/metrics-dag" target="_blank" style="color:var(--accent)"><strong>DAG</strong></a> (deterministic, decision-tree based).
+        Safety metrics check every response for <a href="https://deepeval.com/docs/metrics-bias" target="_blank" style="color:var(--accent)">bias</a>,
+        <a href="https://deepeval.com/docs/metrics-toxicity" target="_blank" style="color:var(--accent)">toxicity</a>,
+        <a href="https://deepeval.com/docs/metrics-pii-leakage" target="_blank" style="color:var(--accent)">PII leakage</a>, and
+        <a href="https://deepeval.com/docs/metrics-hallucination" target="_blank" style="color:var(--accent)">hallucination</a>.
+        Built on <a href="https://deepeval.com" target="_blank" style="color:var(--accent)"><strong>DeepEval</strong></a> — the open-source LLM evaluation framework.
+        Red teaming powered by <a href="https://www.trydeepteam.com" target="_blank" style="color:var(--accent)"><strong>DeepTeam</strong></a>.
       </p>
       <div style="background:var(--bg);border-radius:8px;padding:1rem;font-size:0.85rem;font-family:monospace;color:var(--text2);margin-bottom:1rem">
         Question → Target Model → Response → Judge Model → Scores (GEval + DAG + Safety) → Report
