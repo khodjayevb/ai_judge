@@ -503,10 +503,23 @@ def api_eval_generated():
                 mode=config.MODE,
             )
 
+            # Log to history
+            run_id = log_run(
+                report=report, role=role,
+                model=config.get_model_display_name(),
+                judge_model=f"{judge_cfg['model']} ({judge_cfg['provider']})",
+                provider=config.TARGET_PROVIDER,
+                mode=config.MODE,
+                report_path=report_path,
+                run_type="eval_generated",
+                notes=f"{len(test_cases)} generated/manual test cases",
+            )
+
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["result"] = {
-                "grade": report.grade,
-                "score": report.overall_pct,
+                "run_id": run_id,
+                "grade": report.consolidated_grade,
+                "score": report.consolidated_pct,
                 "report_url": f"/reports/{Path(report_path).name}",
                 "categories": report.category_scores(),
                 "perf": report.perf_summary(),
@@ -992,6 +1005,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <textarea id="manualContext" placeholder="Factual statements for hallucination detection..." style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.85rem;min-height:40px;width:100%;resize:vertical"></textarea>
       </div>
       <button class="btn" style="background:var(--surface2);color:var(--text)" onclick="addManualTestCase()">Add Test Case</button>
+      <h3 style="margin-top:1.5rem;color:var(--accent)">Generated Test Evaluation History</h3>
+      <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.5rem">Evaluations run on generated/manual test cases</p>
+      <div id="genHistory" style="max-height:300px;overflow-y:auto"></div>
     </div>
   </div>
 
@@ -1510,7 +1526,12 @@ function refreshHistory() {
     // Comparison history
     const cmpRuns = runs.filter(r => r.run_type && r.run_type.startsWith('comparison'));
     const cmpEl = document.getElementById('cmpHistory');
-    if (cmpEl) cmpEl.innerHTML = cmpRuns.length ? buildHistoryTable(cmpRuns) : '<p style="color:var(--text2);font-size:0.85rem;padding:0.5rem">No comparisons yet.</p>';
+    if (cmpEl) cmpEl.innerHTML = cmpRuns.length ? buildComparisonTable(cmpRuns) : '<p style="color:var(--text2);font-size:0.85rem;padding:0.5rem">No comparisons yet.</p>';
+
+    // Generated test evaluation history
+    const genRuns = runs.filter(r => r.run_type === 'eval_generated');
+    const genEl = document.getElementById('genHistory');
+    if (genEl) genEl.innerHTML = genRuns.length ? buildGenEvalTable(genRuns) : '<p style="color:var(--text2);font-size:0.85rem;padding:0.5rem">No generated test evaluations yet.</p>';
 
     // Red team history
     const rtRuns = runs.filter(r => r.run_type === 'red_team');
@@ -1522,11 +1543,12 @@ function refreshHistory() {
 }
 
 function buildHistoryTable(runs) {
+  // Evaluation tab: full scoring details
   return `<table class="history-table" style="font-size:0.8rem">
     <thead><tr>
       <th>#</th><th>Timestamp</th><th>Role</th><th>Model</th><th>Judge</th>
       <th>GEval</th><th>DAG</th><th>Combined</th><th>Grade</th>
-      <th>Tests</th><th>Latency</th><th>Cost</th><th>Report</th>
+      <th>Latency</th><th>Cost</th><th>Report</th>
     </tr></thead>
     <tbody>${runs.map(run => `<tr>
       <td>${run.id}</td>
@@ -1538,23 +1560,94 @@ function buildHistoryTable(runs) {
       <td>${run.dag_pct ? run.dag_pct.toFixed(1) + '%' : '-'}</td>
       <td style="font-weight:700">${run.consolidated_pct ? run.consolidated_pct.toFixed(1) : run.overall_pct}%</td>
       <td><span class="grade-badge grade-${((run.consolidated_grade||run.grade||'d')[0]).toLowerCase()}">${run.consolidated_grade||run.grade}</span></td>
-      <td>${run.num_tests}</td>
       <td>${run.avg_latency ? run.avg_latency.toFixed(1) + 's' : '-'}</td>
       <td>${run.estimated_cost ? '$' + run.estimated_cost.toFixed(4) : '-'}</td>
       <td>${run.report_path ? '<a href="/reports/' + run.report_path.split(/[/\\]/).pop() + '" target="_blank">View</a>' : '-'}</td>
     </tr>`).join('')}</tbody></table>`;
 }
 
-function buildRedTeamTable(runs) {
+function buildComparisonTable(runs) {
+  // Comparison tab: pair A/B runs together
+  // Group by pairs (consecutive A+B with same timestamp prefix)
+  const pairs = [];
+  for (let i = 0; i < runs.length; i += 2) {
+    const a = runs[i+1]; // A is logged first (lower ID)
+    const b = runs[i];   // B is logged second (higher ID)
+    if (a && b) pairs.push({a, b});
+    else if (a) pairs.push({a, b: null});
+  }
+
   return `<table class="history-table" style="font-size:0.8rem">
-    <thead><tr><th>#</th><th>Timestamp</th><th>Role</th><th>Model</th><th>Pass Rate</th><th>Grade</th><th>Report</th></tr></thead>
+    <thead><tr>
+      <th>Timestamp</th><th>Role</th>
+      <th>Run A</th><th>A Score</th><th>A Grade</th>
+      <th>Run B</th><th>B Score</th><th>B Grade</th>
+      <th>Delta</th><th>Report</th>
+    </tr></thead>
+    <tbody>${pairs.map(p => {
+      const a = p.a || {};
+      const b = p.b || {};
+      const aScore = a.consolidated_pct || a.overall_pct || 0;
+      const bScore = b.consolidated_pct || b.overall_pct || 0;
+      const delta = (bScore - aScore).toFixed(1);
+      const deltaColor = delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--text2)';
+      return `<tr>
+        <td style="white-space:nowrap">${(a.timestamp||b.timestamp||'').substring(0,10)} ${(a.timestamp||b.timestamp||'').substring(11,16)}</td>
+        <td>${a.role || b.role}</td>
+        <td style="font-size:0.75rem">${a.notes || a.model || '-'}</td>
+        <td>${aScore}%</td>
+        <td><span class="grade-badge grade-${((a.consolidated_grade||a.grade||'d')[0]).toLowerCase()}">${a.consolidated_grade||a.grade||'-'}</span></td>
+        <td style="font-size:0.75rem">${b.notes || b.model || '-'}</td>
+        <td>${bScore}%</td>
+        <td><span class="grade-badge grade-${((b.consolidated_grade||b.grade||'d')[0]).toLowerCase()}">${b.consolidated_grade||b.grade||'-'}</span></td>
+        <td style="color:${deltaColor};font-weight:700">${delta > 0 ? '+' : ''}${delta}%</td>
+        <td>${(b.report_path||a.report_path) ? '<a href="/reports/' + (b.report_path||a.report_path).split(/[/\\]/).pop() + '" target="_blank">View</a>' : '-'}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+function buildRedTeamTable(runs) {
+  // Red Team tab: security-focused columns
+  return `<table class="history-table" style="font-size:0.8rem">
+    <thead><tr>
+      <th>#</th><th>Timestamp</th><th>Role</th><th>Model</th>
+      <th>Attacks</th><th>Pass Rate</th><th>Result</th><th>Report</th>
+    </tr></thead>
+    <tbody>${runs.map(run => {
+      const pr = run.overall_pct || 0;
+      const resultColor = pr >= 90 ? 'var(--green)' : pr >= 70 ? 'var(--yellow)' : 'var(--red)';
+      return `<tr>
+        <td>${run.id}</td>
+        <td style="white-space:nowrap">${(run.timestamp||'').substring(0,10)} ${(run.timestamp||'').substring(11,16)}</td>
+        <td>${run.role}</td>
+        <td>${run.model || 'demo'}</td>
+        <td>${run.num_tests || '-'}</td>
+        <td style="font-weight:700;color:${resultColor}">${pr}%</td>
+        <td><span class="grade-badge grade-${pr >= 90 ? 'a' : pr >= 70 ? 'b' : 'd'}">${pr >= 90 ? 'PASS' : pr >= 70 ? 'WARN' : 'FAIL'}</span></td>
+        <td>${run.report_path ? '<a href="/reports/' + run.report_path.split(/[/\\]/).pop() + '" target="_blank">View</a>' : '-'}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+function buildGenEvalTable(runs) {
+  // Generate Tests tab: evaluations on generated/manual test cases
+  return `<table class="history-table" style="font-size:0.8rem">
+    <thead><tr>
+      <th>#</th><th>Timestamp</th><th>Role</th><th>Model</th>
+      <th>Tests</th><th>GEval</th><th>DAG</th><th>Combined</th><th>Grade</th>
+      <th>Notes</th><th>Report</th>
+    </tr></thead>
     <tbody>${runs.map(run => `<tr>
       <td>${run.id}</td>
       <td style="white-space:nowrap">${(run.timestamp||'').substring(0,10)} ${(run.timestamp||'').substring(11,16)}</td>
       <td>${run.role}</td>
       <td>${run.model || 'demo'}</td>
+      <td>${run.num_tests}</td>
       <td>${run.overall_pct}%</td>
-      <td><span class="grade-badge grade-${run.overall_pct >= 90 ? 'a' : run.overall_pct >= 70 ? 'b' : 'd'}">${run.grade || (run.overall_pct >= 90 ? 'PASS' : 'FAIL')}</span></td>
+      <td>${run.dag_pct ? run.dag_pct.toFixed(1) + '%' : '-'}</td>
+      <td style="font-weight:700">${run.consolidated_pct ? run.consolidated_pct.toFixed(1) : run.overall_pct}%</td>
+      <td><span class="grade-badge grade-${((run.consolidated_grade||run.grade||'d')[0]).toLowerCase()}">${run.consolidated_grade||run.grade}</span></td>
+      <td style="font-size:0.75rem;color:var(--text2)">${run.notes || '-'}</td>
       <td>${run.report_path ? '<a href="/reports/' + run.report_path.split(/[/\\]/).pop() + '" target="_blank">View</a>' : '-'}</td>
     </tr>`).join('')}</tbody></table>`;
 }
