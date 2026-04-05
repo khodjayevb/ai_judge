@@ -164,6 +164,65 @@ def _create_client(cfg: dict):
             return text, m
         return _call
 
+    elif provider == "azure_assistant":
+        # Azure AI Foundry Assistant — uses the Assistants API (thread → message → run)
+        # The system prompt is baked into the assistant definition, not sent per call.
+        from openai import AzureOpenAI
+        client = AzureOpenAI(
+            azure_endpoint=cfg["base_url"], api_key=cfg["api_key"],
+            api_version=cfg.get("api_version", "2024-08-01-preview"),
+        )
+        assistant_id = cfg.get("deployment") or cfg["model"]  # Assistant ID
+
+        def _call(system_prompt: str, user_message: str, **kw) -> tuple[str, ResponseMetrics]:
+            t0 = time.perf_counter()
+            # Create thread
+            thread = client.beta.threads.create()
+            # Add user message
+            client.beta.threads.messages.create(
+                thread_id=thread.id, role="user", content=user_message,
+            )
+            # Run the assistant
+            run = client.beta.threads.runs.create(
+                thread_id=thread.id, assistant_id=assistant_id,
+            )
+            # Poll for completion
+            while run.status in ("queued", "in_progress"):
+                time.sleep(1)
+                run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+
+            latency = time.perf_counter() - t0
+
+            # Get the assistant's response
+            messages = client.beta.threads.messages.list(thread_id=thread.id, order="desc", limit=1)
+            text = ""
+            if messages.data:
+                for block in messages.data[0].content:
+                    if hasattr(block, "text"):
+                        text += block.text.value
+
+            # Get token usage from run
+            usage = run.usage if hasattr(run, "usage") and run.usage else None
+            m = ResponseMetrics(
+                latency_seconds=latency,
+                input_tokens=usage.prompt_tokens if usage else 0,
+                output_tokens=usage.completion_tokens if usage else 0,
+                total_tokens=usage.total_tokens if usage else 0,
+                response_chars=len(text),
+                response_words=len(text.split()) if text else 0,
+                model_id=assistant_id,
+            )
+            m.estimated_cost_usd = _estimate_cost(cfg["model"], m.input_tokens, m.output_tokens)
+
+            # Clean up thread
+            try:
+                client.beta.threads.delete(thread.id)
+            except Exception:
+                pass
+
+            return text, m
+        return _call
+
     elif provider == "azure_foundry":
         from openai import OpenAI
         base = cfg["base_url"].rstrip("/")
