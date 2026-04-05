@@ -738,6 +738,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="tab" onclick="switchTab('redteam')">Red Team</div>
     <div class="tab" onclick="switchTab('generate')">Generate Tests</div>
     <div class="tab" onclick="switchTab('calibrate')">Judge Calibration</div>
+    <div class="tab" onclick="switchTab('docs')">Docs</div>
   </div>
 
   <!-- ═══ EVALUATION TAB ═══ -->
@@ -1047,6 +1048,275 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <h3 style="margin-top:1.5rem;color:var(--accent)">Calibration History</h3>
       <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.5rem">Run calibration multiple times to track judge consistency over time.</p>
       <div id="calHistory" style="max-height:300px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <!-- ═══ DOCS TAB ═══ -->
+  <div class="tab-content" id="tab-docs">
+    <div class="panel" style="padding:2rem">
+
+      <h2 style="color:var(--accent);margin-top:0;border:none">AI Evaluation Framework — Documentation</h2>
+
+      <!-- Quick Nav -->
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.5rem">
+        <a href="#doc-overview" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Overview</a>
+        <a href="#doc-concepts" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Key Concepts</a>
+        <a href="#doc-scoring" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Scoring System</a>
+        <a href="#doc-tabs" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Tab Guide</a>
+        <a href="#doc-config" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Configuration</a>
+        <a href="#doc-roles" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Roles</a>
+        <a href="#doc-glossary" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Glossary</a>
+        <a href="#doc-code" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">Code Examples</a>
+        <a href="#doc-faq" style="padding:0.3rem 0.7rem;background:var(--surface2);border-radius:6px;color:var(--accent);text-decoration:none;font-size:0.8rem">FAQ</a>
+      </div>
+
+      <!-- Overview -->
+      <h3 id="doc-overview" style="color:var(--accent);margin-top:1.5rem">Overview</h3>
+      <p style="color:var(--text2);line-height:1.8;margin-bottom:1rem">
+        This framework evaluates how well AI assistants perform by testing them against domain-specific criteria.
+        It sends questions to a <strong>target model</strong>, then uses a separate <strong>judge model</strong> to score the responses
+        using two complementary methods: <strong>GEval</strong> (nuanced, LLM-based) and <strong>DAG</strong> (deterministic, decision-tree based).
+        Safety metrics check every response for bias, toxicity, PII leakage, and hallucination.
+      </p>
+      <div style="background:var(--bg);border-radius:8px;padding:1rem;font-size:0.85rem;font-family:monospace;color:var(--text2);margin-bottom:1rem">
+        Question → Target Model → Response → Judge Model → Scores (GEval + DAG + Safety) → Report
+      </div>
+
+      <!-- Key Concepts -->
+      <h3 id="doc-concepts" style="color:var(--accent);margin-top:2rem">Key Concepts</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:0.75rem">
+
+        <div style="background:var(--bg);border-radius:8px;padding:1rem;border-left:3px solid var(--accent)">
+          <h4 style="color:var(--accent);margin-bottom:0.3rem">Target Model</h4>
+          <p style="color:var(--text2);font-size:0.85rem">The AI model being evaluated. This is the model whose system prompt you're testing. It receives questions and generates responses.</p>
+          <p style="color:var(--text2);font-size:0.8rem;margin-top:0.3rem"><em>Example: GPT-4o generating Power BI advice</em></p>
+        </div>
+
+        <div style="background:var(--bg);border-radius:8px;padding:1rem;border-left:3px solid var(--purple)">
+          <h4 style="color:var(--purple);margin-bottom:0.3rem">Judge Model</h4>
+          <p style="color:var(--text2);font-size:0.85rem">A separate (ideally stronger) model that scores the target's responses. Should be different from the target to avoid self-grading bias.</p>
+          <p style="color:var(--text2);font-size:0.8rem;margin-top:0.3rem"><em>Example: GPT-5.4 scoring GPT-4o's responses</em></p>
+        </div>
+
+        <div style="background:var(--bg);border-radius:8px;padding:1rem;border-left:3px solid var(--green)">
+          <h4 style="color:var(--green);margin-bottom:0.3rem">System Prompt</h4>
+          <p style="color:var(--text2);font-size:0.85rem">Instructions given to the target model defining its role, knowledge, constraints, and response style. This is what you're optimizing.</p>
+          <p style="color:var(--text2);font-size:0.8rem;margin-top:0.3rem"><em>Sources: Local (codebase), None (deployed model), Custom (paste your own)</em></p>
+        </div>
+
+        <div style="background:var(--bg);border-radius:8px;padding:1rem;border-left:3px solid var(--yellow)">
+          <h4 style="color:var(--yellow);margin-bottom:0.3rem">Test Suite</h4>
+          <p style="color:var(--text2);font-size:0.85rem">A set of questions + evaluation criteria for a specific role. Each test has a question, 5 criteria (what a good answer must include), and a weight (1-3x importance).</p>
+          <p style="color:var(--text2);font-size:0.8rem;margin-top:0.3rem"><em>Located in: test_suites/{role}_tests.py</em></p>
+        </div>
+
+        <div style="background:var(--bg);border-radius:8px;padding:1rem;border-left:3px solid var(--orange)">
+          <h4 style="color:var(--orange);margin-bottom:0.3rem">Judge Context</h4>
+          <p style="color:var(--text2);font-size:0.85rem">Reference documents fed to the judge so it scores against your organization's standards, not generic knowledge. Loaded from docs/{role}/.</p>
+          <p style="color:var(--text2);font-size:0.8rem;margin-top:0.3rem"><em>Example: Your Power BI standards doc with specific DAX patterns and security rules</em></p>
+        </div>
+
+        <div style="background:var(--bg);border-radius:8px;padding:1rem;border-left:3px solid var(--red)">
+          <h4 style="color:var(--red);margin-bottom:0.3rem">Gold Standard</h4>
+          <p style="color:var(--text2);font-size:0.85rem">Pre-scored responses used to validate judge accuracy. Includes excellent, adequate, poor, and misleading responses with known expected scores.</p>
+          <p style="color:var(--text2);font-size:0.8rem;margin-top:0.3rem"><em>Used by: Judge Calibration tab</em></p>
+        </div>
+      </div>
+
+      <!-- Scoring System -->
+      <h3 id="doc-scoring" style="color:var(--accent);margin-top:2rem">Scoring System</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-top:0.75rem">
+        <div style="background:var(--bg);border-radius:8px;padding:1rem">
+          <h4 style="color:var(--accent);margin-bottom:0.5rem">GEval Score</h4>
+          <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">LLM-as-judge with chain-of-thought reasoning. The judge model reads the response and scores each criterion 0.0–1.0.</p>
+          <p style="color:var(--text2);font-size:0.8rem"><strong>Pros:</strong> Nuanced, catches subtlety<br><strong>Cons:</strong> Non-deterministic (may vary between runs)</p>
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:1rem">
+          <h4 style="color:var(--purple);margin-bottom:0.5rem">DAG Score</h4>
+          <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem">Deterministic decision tree. Each criterion checked across 4 dimensions: Addressed, Specificity, Actionability, Accuracy.</p>
+          <p style="color:var(--text2);font-size:0.8rem"><strong>Pros:</strong> Reproducible, pinpoints which dimension failed<br><strong>Cons:</strong> Less nuanced than GEval</p>
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:1rem">
+          <h4 style="color:var(--green);margin-bottom:0.5rem">Combined Score</h4>
+          <p style="color:var(--text2);font-size:0.85rem;margin-bottom:0.5rem"><strong>60% GEval + 40% DAG</strong>. Balances nuance with reproducibility. Grade is based on this combined score.</p>
+          <table style="font-size:0.75rem;color:var(--text2);margin-top:0.3rem">
+            <tr><td>A+ 95%+</td><td>A 90%</td><td>A- 85%</td></tr>
+            <tr><td>B+ 80%</td><td>B 75%</td><td>B- 70%</td></tr>
+            <tr><td>C+ 65%</td><td>C 60%</td><td>D &lt;60%</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <h4 style="color:var(--text);margin-top:1rem">DAG Dimensions (per criterion)</h4>
+      <table class="history-table" style="font-size:0.85rem;margin-top:0.5rem">
+        <thead><tr><th>Dimension</th><th>What it checks</th><th>Weight</th><th>Example pass</th><th>Example fail</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--accent);font-weight:600">Addressed</td><td>Is the criterion mentioned at all?</td><td>3x</td><td>"Use private endpoints for ADLS"</td><td>No mention of endpoints</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">Specificity</td><td>Named services, versions, concrete values?</td><td>3x</td><td>"AES-256 with CMK in FIPS 140-2 Key Vault"</td><td>"Use encryption"</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">Actionability</td><td>Steps, commands, architecture decisions?</td><td>2x</td><td>"1. Create role 2. Add DAX filter 3. Test"</td><td>"Set up security"</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">Accuracy</td><td>Technically correct, no errors?</td><td>2x</td><td>Correct DAX syntax</td><td>Non-existent function name</td></tr>
+        </tbody>
+      </table>
+
+      <h4 style="color:var(--text);margin-top:1rem">Scoring Rubric (used by judge)</h4>
+      <table class="history-table" style="font-size:0.85rem;margin-top:0.5rem">
+        <thead><tr><th>Score</th><th>Level</th><th>Description</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--green);font-weight:700">1.0</td><td>Excellent</td><td>Specific details, exact technologies, actionable</td><td>"AES-256 with CMK in FIPS 140-2 Level 2 HSM-backed Key Vault"</td></tr>
+          <tr><td style="color:var(--green)">0.8</td><td>Good</td><td>Mostly specific, correct direction, minor gap</td><td>"Customer-managed keys in Azure Key Vault"</td></tr>
+          <tr><td style="color:var(--yellow)">0.6</td><td>Adequate</td><td>Mentioned with some detail, lacks specificity</td><td>"Use Azure Key Vault for key management"</td></tr>
+          <tr><td style="color:var(--orange)">0.4</td><td>Weak</td><td>Vague, missing critical details</td><td>"Encryption should be used"</td></tr>
+          <tr><td style="color:var(--red)">0.2</td><td>Poor</td><td>Mentioned in passing, no useful guidance</td><td>"Security is important"</td></tr>
+          <tr><td style="color:var(--red);font-weight:700">0.0</td><td>Not Addressed</td><td>Not mentioned or contradicts</td><td>Topic completely absent</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Tab Guide -->
+      <h3 id="doc-tabs" style="color:var(--accent);margin-top:2rem">Tab Guide</h3>
+      <table class="history-table" style="font-size:0.85rem;margin-top:0.5rem">
+        <thead><tr><th>Tab</th><th>Purpose</th><th>When to use</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--accent);font-weight:600">Run Evaluation</td><td>Score a system prompt against test criteria</td><td>Testing a new/updated prompt, comparing models, tracking quality over time</td></tr>
+          <tr><td style="color:var(--purple);font-weight:600">A/B Comparison</td><td>Compare two configurations side by side</td><td>Weak vs strong prompt, GPT-4o vs GPT-4.1, local vs deployed prompt</td></tr>
+          <tr><td style="color:var(--red);font-weight:600">Red Team</td><td>Adversarial security testing</td><td>Testing resistance to prompt injection, bias probing, PII extraction</td></tr>
+          <tr><td style="color:var(--green);font-weight:600">Generate Tests</td><td>Create new test cases from reference docs or manually</td><td>Expanding test coverage, creating domain-specific tests</td></tr>
+          <tr><td style="color:var(--yellow);font-weight:600">Judge Calibration</td><td>Validate judge accuracy with gold standard</td><td>After changing judge model, adding reference docs, or updating rubric</td></tr>
+          <tr><td style="color:var(--text2);font-weight:600">Docs</td><td>This page — documentation and reference</td><td>Onboarding new team members, understanding concepts</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Configuration -->
+      <h3 id="doc-config" style="color:var(--accent);margin-top:2rem">Configuration (.env)</h3>
+      <table class="history-table" style="font-size:0.85rem;margin-top:0.5rem">
+        <thead><tr><th>Variable</th><th>Description</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td style="font-family:monospace;color:var(--accent)">EVAL_MODE</td><td>demo (no API) or live (real API calls)</td><td>live</td></tr>
+          <tr><td style="font-family:monospace;color:var(--accent)">TARGET_PROVIDER</td><td>LLM provider for the model being tested</td><td>azure, openai, anthropic, google, ollama</td></tr>
+          <tr><td style="font-family:monospace;color:var(--accent)">TARGET_MODEL</td><td>Model name / deployment</td><td>gpt-4o, gpt-4.1, claude-sonnet-4</td></tr>
+          <tr><td style="font-family:monospace;color:var(--accent)">TARGET_BASE_URL</td><td>API endpoint</td><td>https://your-resource.openai.azure.com</td></tr>
+          <tr><td style="font-family:monospace;color:var(--accent)">TARGET_API_KEY</td><td>API key for target model</td><td>(set in .env, never commit)</td></tr>
+          <tr><td style="font-family:monospace;color:var(--accent)">JUDGE_PROVIDER</td><td>Provider for the judge model (falls back to target)</td><td>azure</td></tr>
+          <tr><td style="font-family:monospace;color:var(--accent)">JUDGE_MODEL</td><td>Judge model name</td><td>gpt-5.4</td></tr>
+          <tr><td style="font-family:monospace;color:var(--accent)">TARGET_SYSTEM_PROMPT</td><td>Prompt source: local, none, custom:..., file:path</td><td>local</td></tr>
+          <tr><td style="font-family:monospace;color:var(--accent)">EVAL_ROLE</td><td>Default role for evaluation</td><td>power_bi_engineer</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Roles -->
+      <h3 id="doc-roles" style="color:var(--accent);margin-top:2rem">Available Roles</h3>
+      <table class="history-table" style="font-size:0.85rem;margin-top:0.5rem">
+        <thead><tr><th>Role</th><th>Domain</th><th>Tests</th><th>Judge Context</th><th>Key files</th></tr></thead>
+        <tbody>
+          {% for r in roles %}
+          <tr>
+            <td style="color:var(--accent);font-weight:600">{{ r.slug }}</td>
+            <td>{{ r.domain }}</td>
+            <td>{{ 'Yes' if r.has_tests else 'No' }}</td>
+            <td>{{ 'Yes' if r.has_tests else '-' }}</td>
+            <td style="font-size:0.75rem;font-family:monospace">prompts/{{ r.slug }}.py, test_suites/{{ r.slug }}_tests.py</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <!-- Glossary -->
+      <h3 id="doc-glossary" style="color:var(--accent);margin-top:2rem">Glossary</h3>
+      <table class="history-table" style="font-size:0.85rem;margin-top:0.5rem">
+        <thead><tr><th style="width:180px">Term</th><th>Definition</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--accent);font-weight:600">GEval</td><td>DeepEval's LLM-as-judge metric. Uses chain-of-thought reasoning to score responses. Non-deterministic — scores may vary between runs.</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">DAG Metric</td><td>Deep Acyclic Graph — deterministic decision tree scoring. Same response always gets the same score. Evaluates 4 dimensions per criterion.</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">DeepEval</td><td>Open-source LLM evaluation framework. Provides GEval, safety metrics, hallucination detection, and test infrastructure.</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">DeepTeam</td><td>Adversarial testing framework. Generates prompt injection, encoding attacks, and bias probes to test AI safety.</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">BYOK</td><td>Bring Your Own Key — the framework works with any LLM provider (OpenAI, Azure, Anthropic, Google, Ollama).</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">Scoring Rubric</td><td>A 6-level guide (1.0 to 0.0) injected into every judge prompt defining what each score level looks like.</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">Judge Context</td><td>Reference documents (docs/{role}/) injected into judge prompts so it scores against your standards, not generic knowledge.</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">Hallucination</td><td>When the model fabricates facts, invents regulation citations, or contradicts the provided ground truth context.</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">PII Leakage</td><td>Model response contains real personally identifiable information. Illustrative examples (john@contoso.com) are not flagged.</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">Red Teaming</td><td>Adversarial testing — deliberately trying to make the AI misbehave (leak data, show bias, bypass guardrails).</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">Gold Standard</td><td>Pre-scored test responses (excellent/adequate/poor/misleading) used to validate judge accuracy in the Calibration tab.</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">Consolidated Score</td><td>60% GEval + 40% DAG. The grade (A+ through D) is based on this combined score.</td></tr>
+          <tr><td style="color:var(--accent);font-weight:600">Multi-Run Averaging</td><td>Running the same evaluation N times and averaging scores to reduce variance from non-deterministic responses.</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Code Examples -->
+      <h3 id="doc-code" style="color:var(--accent);margin-top:2rem">Code Examples</h3>
+
+      <h4 style="color:var(--text);margin-top:1rem">Adding a new role</h4>
+      <pre style="background:var(--bg);padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;color:var(--text2)"><code># 1. Create prompts/my_role.py
+SYSTEM_PROMPT = "You are an expert..."
+PROMPT_METADATA = {"name": "My Role", "version": "1.0.0",
+    "domain": "My Domain", "author": "...", "target_model": "gpt-4o"}
+
+# 2. Create test_suites/my_role_tests.py
+TEST_CASES = [{"id": "TEST-01", "category": "...",
+    "question": "...", "criteria": ["...", "..."], "weight": 2}]
+CATEGORIES = sorted(set(tc["category"] for tc in TEST_CASES))
+
+# 3. (Optional) Add reference docs: docs/my_role/standards.md
+# 4. The registry auto-discovers it — no other changes needed</code></pre>
+
+      <h4 style="color:var(--text);margin-top:1rem">Adding judge context (reference docs)</h4>
+      <pre style="background:var(--bg);padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;color:var(--text2)"><code># Create docs/{role_slug}/ folder with .md or .txt files
+# Example: docs/power_bi_engineer/power_bi_standards.md
+# These are automatically loaded and injected into every judge prompt
+# The judge then scores against YOUR standards, not generic knowledge</code></pre>
+
+      <h4 style="color:var(--text);margin-top:1rem">CLI usage</h4>
+      <pre style="background:var(--bg);padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;color:var(--text2)"><code># List all roles
+python run_evaluation.py --list-roles
+
+# Run evaluation
+python run_evaluation.py --role power_bi_engineer
+
+# Run A/B comparison
+python run_comparison.py --role azure_data_architect
+
+# Generate test cases from reference docs
+python generate_tests.py --role power_bi_engineer --count 10
+
+# Start web dashboard
+python app.py</code></pre>
+
+      <!-- FAQ -->
+      <h3 id="doc-faq" style="color:var(--accent);margin-top:2rem">FAQ</h3>
+
+      <details style="margin-bottom:0.75rem">
+        <summary style="cursor:pointer;color:var(--text);font-weight:600;font-size:0.9rem">Why do scores vary between runs?</summary>
+        <p style="color:var(--text2);font-size:0.85rem;padding:0.5rem 0 0 1rem">The target model doesn't give identical responses every time (temperature > 0). GEval scoring is also non-deterministic. Use <strong>multi-run averaging (3x)</strong> to get more stable scores. DAG scores are deterministic per response — variance comes from different responses, not different scoring.</p>
+      </details>
+
+      <details style="margin-bottom:0.75rem">
+        <summary style="cursor:pointer;color:var(--text);font-weight:600;font-size:0.9rem">Why is DAG score lower than GEval?</summary>
+        <p style="color:var(--text2);font-size:0.85rem;padding:0.5rem 0 0 1rem">DAG uses a strict binary decision tree (Addressed? Specific? Actionable? Accurate?). GEval is more forgiving — it gives partial credit for vague but directionally correct answers. The gap tells you how much "soft credit" GEval is giving vs the strict standard.</p>
+      </details>
+
+      <details style="margin-bottom:0.75rem">
+        <summary style="cursor:pointer;color:var(--text);font-weight:600;font-size:0.9rem">What should I use as the judge model?</summary>
+        <p style="color:var(--text2);font-size:0.85rem;padding:0.5rem 0 0 1rem">Use a <strong>different, stronger model</strong> than the target. If testing GPT-4o, judge with GPT-5.4 or Claude. Never use the same model as both target and judge (self-grading bias). Run <strong>Judge Calibration</strong> to verify accuracy.</p>
+      </details>
+
+      <details style="margin-bottom:0.75rem">
+        <summary style="cursor:pointer;color:var(--text);font-weight:600;font-size:0.9rem">How do I improve a low score?</summary>
+        <p style="color:var(--text2);font-size:0.85rem;padding:0.5rem 0 0 1rem">1. Check which criteria scored low in the report. 2. Look at DAG dimensions — did Specificity or Actionability fail? 3. Add targeted instructions to the system prompt (e.g., "always mention specific Azure SKUs"). 4. Use <strong>Auto-Improve Prompt</strong> to generate an improved version automatically. 5. Re-evaluate to verify improvement.</p>
+      </details>
+
+      <details style="margin-bottom:0.75rem">
+        <summary style="cursor:pointer;color:var(--text);font-weight:600;font-size:0.9rem">Why does Judge Context matter?</summary>
+        <p style="color:var(--text2);font-size:0.85rem;padding:0.5rem 0 0 1rem">Without context, the judge uses generic knowledge. With your reference docs, it scores against <strong>your organization's standards</strong>. A generic "use encryption" gets a lower score when the judge knows your standard requires "AES-256 with CMK in FIPS 140-2 Level 2 HSM-backed Key Vault."</p>
+      </details>
+
+      <details style="margin-bottom:0.75rem">
+        <summary style="cursor:pointer;color:var(--text);font-weight:600;font-size:0.9rem">What does "None (deployed / Foundry assistant)" mean?</summary>
+        <p style="color:var(--text2);font-size:0.85rem;padding:0.5rem 0 0 1rem">When you select "None" as the system prompt source, we send <strong>no system prompt</strong> to the model. This tests whatever prompt is already configured in the deployed model/assistant (e.g., an Azure AI Foundry assistant). Useful for evaluating production deployments.</p>
+      </details>
+
+      <details style="margin-bottom:0.75rem">
+        <summary style="cursor:pointer;color:var(--text);font-weight:600;font-size:0.9rem">How do I add a new role?</summary>
+        <p style="color:var(--text2);font-size:0.85rem;padding:0.5rem 0 0 1rem">Create two files: <code>prompts/my_role.py</code> (with SYSTEM_PROMPT and PROMPT_METADATA) and <code>test_suites/my_role_tests.py</code> (with TEST_CASES). Optionally add reference docs in <code>docs/my_role/</code>. The registry auto-discovers new roles — no other changes needed.</p>
+      </details>
+
     </div>
   </div>
 
