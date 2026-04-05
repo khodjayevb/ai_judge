@@ -958,7 +958,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
           <label>System Prompt</label>
           <select id="evalPrompt" onchange="toggleCustomPrompt('evalCustomPrompt', this.value)">
             <option value="local">Local (from codebase)</option>
-            <option value="none">None (deployed model / Foundry assistant)</option>
+            <option value="none">None — no prompt sent (Foundry Assistants only)</option>
             <option value="custom">Custom (paste your own)</option>
           </select>
           <textarea id="evalCustomPrompt" placeholder="Paste your system prompt here..." style="display:none;margin-top:0.3rem;background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.8rem;font-family:monospace;min-height:80px;width:100%;resize:vertical"></textarea>
@@ -1026,7 +1026,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             <select id="cmpPromptA" onchange="toggleCustomPrompt('cmpCustomPromptA', this.value)">
               <option value="local">Local (full prompt)</option>
               <option value="weak">Weak baseline (v1)</option>
-              <option value="none">None (deployed / Foundry assistant)</option>
+              <option value="none">None — no prompt sent (Foundry Assistants only)</option>
               <option value="custom">Custom (paste your own)</option>
             </select>
             <textarea id="cmpCustomPromptA" placeholder="Paste system prompt for Run A..." style="display:none;margin-top:0.3rem;background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.8rem;font-family:monospace;min-height:60px;width:100%;resize:vertical"></textarea>
@@ -1054,7 +1054,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             <select id="cmpPromptB" onchange="toggleCustomPrompt('cmpCustomPromptB', this.value)">
               <option value="local">Local (full prompt)</option>
               <option value="weak">Weak baseline (v1)</option>
-              <option value="none">None (deployed / Foundry assistant)</option>
+              <option value="none">None — no prompt sent (Foundry Assistants only)</option>
               <option value="custom">Custom (paste your own)</option>
             </select>
             <textarea id="cmpCustomPromptB" placeholder="Paste system prompt for Run B..." style="display:none;margin-top:0.3rem;background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.8rem;font-family:monospace;min-height:60px;width:100%;resize:vertical"></textarea>
@@ -1109,7 +1109,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
           <label>System Prompt</label>
           <select id="rtPrompt" onchange="toggleCustomPrompt('rtCustomPrompt', this.value)">
             <option value="local">Local (from codebase)</option>
-            <option value="none">None (deployed / Foundry assistant)</option>
+            <option value="none">None — no prompt sent (Foundry Assistants only)</option>
             <option value="custom">Custom (paste your own)</option>
           </select>
           <textarea id="rtCustomPrompt" placeholder="Paste system prompt to test..." style="display:none;margin-top:0.3rem;background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.5rem;font-size:0.8rem;font-family:monospace;min-height:60px;width:100%;resize:vertical"></textarea>
@@ -1730,8 +1730,13 @@ python app.py</code></pre>
       </details>
 
       <details style="margin-bottom:0.75rem">
-        <summary style="cursor:pointer;color:var(--text);font-weight:600;font-size:0.9rem">What does "None (deployed / Foundry assistant)" mean?</summary>
-        <p style="color:var(--text2);font-size:0.85rem;padding:0.5rem 0 0 1rem">When you select "None" as the system prompt source, we send <strong>no system prompt</strong> to the model. This tests whatever prompt is already configured in the deployed model/assistant (e.g., an Azure AI Foundry assistant). Useful for evaluating production deployments.</p>
+        <summary style="cursor:pointer;color:var(--text);font-weight:600;font-size:0.9rem">When should I use each System Prompt option?</summary>
+        <div style="color:var(--text2);font-size:0.85rem;padding:0.5rem 0 0 1rem">
+          <p><strong style="color:var(--accent)">Local (from codebase)</strong> — Sends the prompt from <code>prompts/{role}.py</code>. Use this for prompt development and iteration. Most common choice.</p>
+          <p style="margin-top:0.5rem"><strong style="color:var(--accent)">Custom (paste your own)</strong> — Paste any prompt text directly. Use this to test a specific version without modifying code files.</p>
+          <p style="margin-top:0.5rem"><strong style="color:var(--accent)">None — no prompt sent</strong> — Sends NO system message to the API. <strong>Only works with Azure AI Foundry Assistants</strong> where the prompt is baked into the assistant definition.</p>
+          <p style="margin-top:0.5rem;color:var(--yellow)"><strong>Important:</strong> Standard Azure OpenAI deployments do NOT retain system prompts via API. The system message you configure in Azure OpenAI Studio Playground is only used in the Playground UI — API calls always require the prompt to be passed explicitly. Use "Local" or "Custom" for standard deployments.</p>
+        </div>
       </details>
 
       <details style="margin-bottom:0.75rem">
