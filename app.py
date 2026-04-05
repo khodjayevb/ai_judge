@@ -426,6 +426,13 @@ def api_calibrate():
                 _jobs[job_id]["current_test"] = label
 
             result = run_calibration(on_progress=on_progress)
+
+            # Log to calibration history
+            from results_db import log_calibration
+            judge_cfg = config.get_judge_config()
+            cal_id = log_calibration(result, judge_model=f"{judge_cfg['model']} ({judge_cfg['provider']})")
+            result["cal_id"] = cal_id
+
             _jobs[job_id]["status"] = "done"
             _jobs[job_id]["result"] = result
         except Exception as e:
@@ -436,6 +443,12 @@ def api_calibrate():
     thread.daemon = True
     thread.start()
     return jsonify({"job_id": job_id})
+
+
+@app.route("/api/calibration-history")
+def api_calibration_history():
+    from results_db import get_calibration_runs
+    return jsonify(get_calibration_runs())
 
 
 @app.route("/api/save-test-suite", methods=["POST"])
@@ -1538,7 +1551,11 @@ function refreshHistory() {
     const rtEl = document.getElementById('rtHistory');
     if (rtEl) rtEl.innerHTML = rtRuns.length ? buildRedTeamTable(rtRuns) : '<p style="color:var(--text2);font-size:0.85rem;padding:0.5rem">No red team runs yet.</p>';
 
-    // Calibration — not in DB yet, skip for now
+    // Calibration history (separate table)
+    fetch('/api/calibration-history').then(r => r.json()).then(calRuns => {
+      const calEl = document.getElementById('calHistory');
+      if (calEl) calEl.innerHTML = calRuns.length ? buildCalibrationTable(calRuns) : '<p style="color:var(--text2);font-size:0.85rem;padding:0.5rem">No calibration runs yet.</p>';
+    }).catch(() => {});
   });
 }
 
@@ -1625,6 +1642,34 @@ function buildRedTeamTable(runs) {
         <td style="font-weight:700;color:${resultColor}">${pr}%</td>
         <td><span class="grade-badge grade-${pr >= 90 ? 'a' : pr >= 70 ? 'b' : 'd'}">${pr >= 90 ? 'PASS' : pr >= 70 ? 'WARN' : 'FAIL'}</span></td>
         <td>${run.report_path ? '<a href="/reports/' + run.report_path.split(/[/\\]/).pop() + '" target="_blank">View</a>' : '-'}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+function buildCalibrationTable(runs) {
+  return `<table class="history-table" style="font-size:0.8rem">
+    <thead><tr>
+      <th>#</th><th>Timestamp</th><th>Judge Model</th>
+      <th>Accuracy</th><th>Discrimination</th><th>Avg Deviation</th>
+      <th>Excellent</th><th>Adequate</th><th>Poor</th><th>Misleading</th>
+      <th>Pass/Fail</th><th>Issues</th>
+    </tr></thead>
+    <tbody>${runs.map(run => {
+      const accColor = run.accuracy >= 80 ? 'var(--green)' : run.accuracy >= 60 ? 'var(--yellow)' : 'var(--red)';
+      const discColor = run.discrimination >= 0.5 ? 'var(--green)' : run.discrimination >= 0.3 ? 'var(--yellow)' : 'var(--red)';
+      return `<tr>
+        <td>${run.id}</td>
+        <td style="white-space:nowrap">${(run.timestamp||'').substring(0,10)} ${(run.timestamp||'').substring(11,16)}</td>
+        <td>${run.judge_model || '-'}</td>
+        <td style="font-weight:700;color:${accColor}">${run.accuracy}%</td>
+        <td style="font-weight:700;color:${discColor}">${run.discrimination}</td>
+        <td>${run.avg_deviation}</td>
+        <td style="color:var(--green)">${run.avg_excellent}</td>
+        <td style="color:var(--yellow)">${run.avg_adequate}</td>
+        <td style="color:var(--red)">${run.avg_poor}</td>
+        <td style="color:var(--orange)">${run.avg_misleading}</td>
+        <td>${run.passed}/${run.total_tests}</td>
+        <td style="color:${run.issues_count > 0 ? 'var(--red)' : 'var(--green)'}">${run.issues_count}</td>
       </tr>`;
     }).join('')}</tbody></table>`;
 }

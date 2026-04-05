@@ -60,8 +60,73 @@ def init_db():
             conn.execute(f"ALTER TABLE eval_runs ADD COLUMN {col} {default}")
         except Exception:
             pass
+    # Calibration history table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS calibration_runs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp   TEXT NOT NULL,
+            judge_model TEXT,
+            accuracy    REAL,
+            discrimination REAL,
+            avg_deviation REAL,
+            total_tests INTEGER,
+            passed      INTEGER,
+            failed      INTEGER,
+            issues_count INTEGER,
+            avg_excellent REAL,
+            avg_adequate REAL,
+            avg_poor    REAL,
+            avg_misleading REAL,
+            details     TEXT
+        )
+    """)
     conn.commit()
     conn.close()
+
+
+def log_calibration(result: dict, judge_model: str = "") -> int:
+    """Log a calibration run."""
+    init_db()
+    conn = _get_conn()
+    try:
+        bq = result.get("by_quality", {})
+        cursor = conn.execute("""
+            INSERT INTO calibration_runs (
+                timestamp, judge_model, accuracy, discrimination, avg_deviation,
+                total_tests, passed, failed, issues_count,
+                avg_excellent, avg_adequate, avg_poor, avg_misleading, details
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            datetime.now().isoformat(),
+            judge_model,
+            result.get("overall_accuracy", 0),
+            result.get("discrimination", 0),
+            result.get("avg_deviation", 0),
+            result.get("total_tests", 0),
+            result.get("passed", 0),
+            result.get("failed", 0),
+            len(result.get("consistency_issues", [])),
+            bq.get("excellent", {}).get("avg_geval", 0),
+            bq.get("adequate", {}).get("avg_geval", 0),
+            bq.get("poor", {}).get("avg_geval", 0),
+            bq.get("misleading", {}).get("avg_geval", 0),
+            json.dumps(result.get("consistency_issues", [])),
+        ))
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def get_calibration_runs(limit: int = 20) -> list[dict]:
+    """Get recent calibration runs."""
+    init_db()
+    conn = _get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM calibration_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
 def log_run(
