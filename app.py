@@ -457,6 +457,128 @@ def api_calibration_history():
     return jsonify(get_calibration_runs())
 
 
+@app.route("/api/role/<slug>")
+def api_get_role(slug):
+    """Get full details for a role: prompt, test cases, context."""
+    try:
+        from prompts.registry import get_prompt, get_test_suite
+        from evaluators.judge_context import load_judge_context, get_judge_context_info
+        prompt, meta = get_prompt(slug)
+        tests = get_test_suite(slug)
+        ctx_info = get_judge_context_info(slug)
+        ctx_text = load_judge_context(slug)
+        return jsonify({
+            "slug": slug, "meta": meta, "prompt": prompt,
+            "tests": tests, "test_count": len(tests),
+            "context_info": ctx_info, "context_text": ctx_text[:5000] if ctx_text else "",
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 404
+
+
+@app.route("/api/role/create", methods=["POST"])
+def api_create_role():
+    """Create a new role with prompt, test cases, and optional context."""
+    data = request.json
+    slug = data.get("slug", "").strip().lower().replace(" ", "_").replace("-", "_")
+    name = data.get("name", "").strip()
+    domain = data.get("domain", "").strip()
+    prompt_text = data.get("prompt", "").strip()
+    tests = data.get("tests", [])
+    context_text = data.get("context", "").strip()
+
+    if not slug or not name or not prompt_text:
+        return jsonify({"error": "slug, name, and prompt are required"}), 400
+
+    # Check if role already exists
+    prompt_path = Path(f"prompts/{slug}.py")
+    if prompt_path.exists():
+        return jsonify({"error": f"Role '{slug}' already exists"}), 400
+
+    try:
+        # Create prompt file
+        prompt_content = f'"""\nSystem prompt for {name}.\n"""\n\n'
+        prompt_content += f'SYSTEM_PROMPT = """{prompt_text}"""\n\n'
+        prompt_content += f'PROMPT_METADATA = {{\n'
+        prompt_content += f'    "name": "{name}",\n'
+        prompt_content += f'    "version": "1.0.0",\n'
+        prompt_content += f'    "author": "AI Evaluation Framework",\n'
+        prompt_content += f'    "domain": "{domain}",\n'
+        prompt_content += f'    "target_model": "gpt-4o",\n'
+        prompt_content += f'}}\n'
+        prompt_path.write_text(prompt_content, encoding="utf-8")
+
+        # Create test suite if provided
+        test_path = Path(f"test_suites/{slug}_tests.py")
+        if tests:
+            import json as _json
+            test_content = f'"""\nTest suite for {name}.\n"""\n\n'
+            test_content += f'TEST_CASES = {_json.dumps(tests, indent=4, ensure_ascii=False)}\n\n'
+            test_content += 'CATEGORIES = sorted(set(tc["category"] for tc in TEST_CASES))\n'
+            test_path.write_text(test_content, encoding="utf-8")
+        else:
+            # Create empty test suite
+            test_content = f'"""\nTest suite for {name}.\n"""\n\nTEST_CASES = []\n\nCATEGORIES = []\n'
+            test_path.write_text(test_content, encoding="utf-8")
+
+        # Create context doc if provided
+        if context_text:
+            ctx_dir = Path(f"docs/{slug}")
+            ctx_dir.mkdir(parents=True, exist_ok=True)
+            (ctx_dir / "standards.md").write_text(context_text, encoding="utf-8")
+
+        # Clear registry cache
+        from prompts.registry import _PROMPTS_DIR
+        import importlib
+        # Force re-import on next access
+
+        return jsonify({"success": True, "slug": slug, "files_created": {
+            "prompt": str(prompt_path),
+            "tests": str(test_path),
+            "context": str(Path(f"docs/{slug}/standards.md")) if context_text else None,
+        }})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/role/update", methods=["POST"])
+def api_update_role():
+    """Update an existing role's prompt, tests, or context."""
+    data = request.json
+    slug = data.get("slug", "")
+    updates = {}
+
+    # Update prompt if provided
+    if "prompt" in data and data["prompt"].strip():
+        prompt_path = Path(f"prompts/{slug}.py")
+        if prompt_path.exists():
+            # Read existing to preserve metadata
+            content = prompt_path.read_text(encoding="utf-8")
+            # Replace just the SYSTEM_PROMPT string
+            import re
+            new_prompt = data["prompt"].strip()
+            new_content = re.sub(
+                r'SYSTEM_PROMPT = """.*?"""',
+                f'SYSTEM_PROMPT = """{new_prompt}"""',
+                content, flags=re.DOTALL
+            )
+            prompt_path.write_text(new_content, encoding="utf-8")
+            updates["prompt"] = "updated"
+
+    # Update context if provided
+    if "context" in data and data["context"].strip():
+        ctx_dir = Path(f"docs/{slug}")
+        ctx_dir.mkdir(parents=True, exist_ok=True)
+        (ctx_dir / "standards.md").write_text(data["context"].strip(), encoding="utf-8")
+        # Clear context cache
+        from evaluators.judge_context import _context_cache, _context_meta
+        _context_cache.pop(slug, None)
+        _context_meta.pop(slug, None)
+        updates["context"] = "updated"
+
+    return jsonify({"success": True, "updates": updates})
+
+
 @app.route("/api/save-test-suite", methods=["POST"])
 def api_save_test_suite():
     """Save generated tests as a Python test suite file."""
@@ -738,6 +860,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="tab" onclick="switchTab('redteam')">Red Team</div>
     <div class="tab" onclick="switchTab('generate')">Generate Tests</div>
     <div class="tab" onclick="switchTab('calibrate')">Judge Calibration</div>
+    <div class="tab" onclick="switchTab('manage')">Manage Roles</div>
     <div class="tab" onclick="switchTab('docs')">Docs</div>
   </div>
 
@@ -1048,6 +1171,71 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <h3 style="margin-top:1.5rem;color:var(--accent)">Calibration History</h3>
       <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.5rem">Run calibration multiple times to track judge consistency over time.</p>
       <div id="calHistory" style="max-height:300px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <!-- ═══ MANAGE ROLES TAB ═══ -->
+  <div class="tab-content" id="tab-manage">
+    <div class="panel">
+      <div class="panel-title">Manage Roles</div>
+
+      <!-- Existing roles -->
+      <h3 style="color:var(--accent);margin-bottom:0.75rem">Existing Roles</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:0.75rem;margin-bottom:1.5rem">
+        {% for r in roles %}
+        <div style="background:var(--bg);border-radius:8px;padding:1rem;border-left:3px solid var(--accent);cursor:pointer" onclick="loadRole('{{ r.slug }}')">
+          <div style="font-weight:700;color:var(--accent)">{{ r.name }}</div>
+          <div style="font-size:0.8rem;color:var(--text2)">{{ r.domain }} | v{{ r.version }}</div>
+          <div style="font-size:0.75rem;color:var(--text2);margin-top:0.3rem">
+            Tests: {{ 'Yes' if r.has_tests else 'No' }} |
+            A/B: {{ 'Yes' if r.has_weak_variant else 'No' }} |
+            Click to edit
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <hr style="border:1px solid var(--surface2);margin:1.5rem 0">
+
+      <!-- Create / Edit Role -->
+      <h3 style="color:var(--accent);margin-bottom:0.75rem" id="roleFormTitle">Create New Role</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Role Slug (lowercase, no spaces)</label>
+          <input type="text" id="mgrSlug" placeholder="e.g., data_scientist">
+        </div>
+        <div class="form-group">
+          <label>Display Name</label>
+          <input type="text" id="mgrName" placeholder="e.g., Data Scientist Assistant">
+        </div>
+        <div class="form-group">
+          <label>Domain</label>
+          <input type="text" id="mgrDomain" placeholder="e.g., Data Science & ML">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom:0.75rem">
+        <label>System Prompt</label>
+        <textarea id="mgrPrompt" placeholder="You are an expert... (write the full system prompt)" style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.75rem;font-size:0.85rem;font-family:monospace;min-height:200px;width:100%;resize:vertical"></textarea>
+      </div>
+
+      <div class="form-group" style="margin-bottom:0.75rem">
+        <label>Judge Context / Reference Standards (optional — used for domain-aware scoring)</label>
+        <textarea id="mgrContext" placeholder="Paste your organization's standards, best practices, and guidelines here. The judge will score responses against this content." style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.75rem;font-size:0.85rem;min-height:120px;width:100%;resize:vertical"></textarea>
+      </div>
+
+      <details style="margin-bottom:0.75rem">
+        <summary style="cursor:pointer;color:var(--accent);font-size:0.9rem">Add Test Cases (JSON format)</summary>
+        <textarea id="mgrTests" placeholder='[{"id":"TEST-01","category":"General","question":"...","criteria":["...","..."],"weight":2}]' style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.75rem;font-size:0.8rem;font-family:monospace;min-height:120px;width:100%;resize:vertical;margin-top:0.5rem"></textarea>
+        <p style="color:var(--text2);font-size:0.75rem;margin-top:0.3rem">Tip: Use the Generate Tests tab to create test cases, then paste the JSON here.</p>
+      </details>
+
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-primary" id="mgrCreateBtn" onclick="createRole()">Create Role</button>
+        <button class="btn" id="mgrUpdateBtn" style="background:var(--purple);color:#fff;display:none" onclick="updateRole()">Update Role</button>
+        <button class="btn" style="background:var(--surface2);color:var(--text)" onclick="clearRoleForm()">Clear Form</button>
+      </div>
+      <div class="result-flash" id="mgrResult" style="margin-top:0.75rem"></div>
     </div>
   </div>
 
@@ -1420,6 +1608,92 @@ function getPromptValue(selectId, textareaId) {
     return 'custom:' + document.getElementById(textareaId).value;
   }
   return sel.value;
+}
+
+// ── Manage Roles ──
+let _editingRole = null;
+
+function loadRole(slug) {
+  fetch('/api/role/' + slug).then(r => r.json()).then(data => {
+    if (data.error) { alert(data.error); return; }
+    _editingRole = slug;
+    document.getElementById('mgrSlug').value = slug;
+    document.getElementById('mgrSlug').disabled = true;
+    document.getElementById('mgrName').value = data.meta.name || '';
+    document.getElementById('mgrDomain').value = data.meta.domain || '';
+    document.getElementById('mgrPrompt').value = data.prompt || '';
+    document.getElementById('mgrContext').value = data.context_text || '';
+    document.getElementById('mgrTests').value = JSON.stringify(data.tests, null, 2);
+    document.getElementById('roleFormTitle').textContent = 'Edit Role: ' + slug;
+    document.getElementById('mgrCreateBtn').style.display = 'none';
+    document.getElementById('mgrUpdateBtn').style.display = 'inline-block';
+  });
+}
+
+function clearRoleForm() {
+  _editingRole = null;
+  document.getElementById('mgrSlug').value = '';
+  document.getElementById('mgrSlug').disabled = false;
+  document.getElementById('mgrName').value = '';
+  document.getElementById('mgrDomain').value = '';
+  document.getElementById('mgrPrompt').value = '';
+  document.getElementById('mgrContext').value = '';
+  document.getElementById('mgrTests').value = '';
+  document.getElementById('roleFormTitle').textContent = 'Create New Role';
+  document.getElementById('mgrCreateBtn').style.display = 'inline-block';
+  document.getElementById('mgrUpdateBtn').style.display = 'none';
+  document.getElementById('mgrResult').classList.remove('active');
+}
+
+function createRole() {
+  const slug = document.getElementById('mgrSlug').value.trim();
+  const name = document.getElementById('mgrName').value.trim();
+  const domain = document.getElementById('mgrDomain').value.trim();
+  const prompt = document.getElementById('mgrPrompt').value.trim();
+  const context = document.getElementById('mgrContext').value.trim();
+  let tests = [];
+  try {
+    const raw = document.getElementById('mgrTests').value.trim();
+    if (raw) tests = JSON.parse(raw);
+  } catch(e) { alert('Invalid test JSON: ' + e.message); return; }
+
+  if (!slug || !name || !prompt) { alert('Slug, Name, and System Prompt are required.'); return; }
+
+  fetch('/api/role/create', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({slug, name, domain, prompt, context, tests})
+  }).then(r => r.json()).then(d => {
+    const flash = document.getElementById('mgrResult');
+    if (d.success) {
+      flash.className = 'result-flash active success';
+      flash.innerHTML = '<strong>Role created!</strong> Restart the dashboard to see it in dropdowns. Files: ' + JSON.stringify(d.files_created);
+    } else {
+      flash.className = 'result-flash active error';
+      flash.innerHTML = '<strong>Error:</strong> ' + d.error;
+    }
+  });
+}
+
+function updateRole() {
+  if (!_editingRole) return;
+  const prompt = document.getElementById('mgrPrompt').value.trim();
+  const context = document.getElementById('mgrContext').value.trim();
+
+  fetch('/api/role/update', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({slug: _editingRole, prompt, context})
+  }).then(r => r.json()).then(d => {
+    const flash = document.getElementById('mgrResult');
+    if (d.success) {
+      flash.className = 'result-flash active success';
+      flash.innerHTML = '<strong>Role updated!</strong> Changes: ' + JSON.stringify(d.updates) + '. Restart dashboard to reload prompt changes.';
+    } else {
+      flash.className = 'result-flash active error';
+      flash.innerHTML = '<strong>Error:</strong> ' + (d.error || 'Unknown error');
+    }
+  });
 }
 
 function runCalibration() {
