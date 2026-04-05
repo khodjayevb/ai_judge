@@ -81,6 +81,24 @@ def init_db():
             report_path TEXT
         )
     """)
+    # Role version history table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS role_versions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp   TEXT NOT NULL,
+            role_slug   TEXT NOT NULL,
+            version     TEXT,
+            author      TEXT DEFAULT '',
+            change_note TEXT DEFAULT '',
+            prompt_text TEXT,
+            test_cases  TEXT,
+            context_text TEXT,
+            prompt_hash TEXT,
+            test_hash   TEXT,
+            context_hash TEXT
+        )
+    """)
+
     # Migration for existing calibration tables
     try:
         conn.execute("ALTER TABLE calibration_runs ADD COLUMN report_path TEXT")
@@ -132,6 +150,73 @@ def get_calibration_runs(limit: int = 20) -> list[dict]:
     try:
         rows = conn.execute("SELECT * FROM calibration_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def save_role_version(
+    role_slug: str,
+    prompt_text: str = "",
+    test_cases_json: str = "",
+    context_text: str = "",
+    version: str = "",
+    author: str = "",
+    change_note: str = "",
+) -> int:
+    """Save a snapshot of a role's current state."""
+    import hashlib
+    init_db()
+    conn = _get_conn()
+    try:
+        cursor = conn.execute("""
+            INSERT INTO role_versions (
+                timestamp, role_slug, version, author, change_note,
+                prompt_text, test_cases, context_text,
+                prompt_hash, test_hash, context_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            datetime.now().isoformat(),
+            role_slug,
+            version,
+            author,
+            change_note,
+            prompt_text,
+            test_cases_json,
+            context_text,
+            hashlib.md5(prompt_text.encode()).hexdigest()[:8] if prompt_text else "",
+            hashlib.md5(test_cases_json.encode()).hexdigest()[:8] if test_cases_json else "",
+            hashlib.md5(context_text.encode()).hexdigest()[:8] if context_text else "",
+        ))
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def get_role_versions(role_slug: str, limit: int = 20) -> list[dict]:
+    """Get version history for a role."""
+    init_db()
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, timestamp, role_slug, version, author, change_note, "
+            "prompt_hash, test_hash, context_hash, "
+            "LENGTH(prompt_text) as prompt_len, LENGTH(test_cases) as test_len, LENGTH(context_text) as context_len "
+            "FROM role_versions WHERE role_slug = ? ORDER BY id DESC LIMIT ?",
+            (role_slug, limit)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_role_version_detail(version_id: int) -> dict | None:
+    """Get full content of a specific version."""
+    init_db()
+    conn = _get_conn()
+    try:
+        row = conn.execute("SELECT * FROM role_versions WHERE id = ?", (version_id,)).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 

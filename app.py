@@ -532,6 +532,16 @@ def api_create_role():
         import importlib
         # Force re-import on next access
 
+        # Save initial version
+        from results_db import save_role_version
+        import json as _json2
+        save_role_version(
+            role_slug=slug, prompt_text=prompt_text,
+            test_cases_json=_json2.dumps(tests) if tests else "",
+            context_text=context_text, version="1.0.0",
+            author="UI", change_note="Initial creation",
+        )
+
         return jsonify({"success": True, "slug": slug, "files_created": {
             "prompt": str(prompt_path),
             "tests": str(test_path),
@@ -576,7 +586,36 @@ def api_update_role():
         _context_meta.pop(slug, None)
         updates["context"] = "updated"
 
+    # Save version snapshot
+    if updates:
+        from results_db import save_role_version
+        change_note = data.get("change_note", "Updated via UI")
+        save_role_version(
+            role_slug=slug,
+            prompt_text=data.get("prompt", ""),
+            context_text=data.get("context", ""),
+            version=data.get("version", ""),
+            author="UI",
+            change_note=change_note,
+        )
+        updates["version_saved"] = True
+
     return jsonify({"success": True, "updates": updates})
+
+
+@app.route("/api/role/versions/<slug>")
+def api_role_versions(slug):
+    from results_db import get_role_versions
+    return jsonify(get_role_versions(slug))
+
+
+@app.route("/api/role/version/<int:version_id>")
+def api_role_version_detail(version_id):
+    from results_db import get_role_version_detail
+    v = get_role_version_detail(version_id)
+    if not v:
+        return jsonify({"error": "Version not found"}), 404
+    return jsonify(v)
 
 
 @app.route("/api/role/upload-context/<slug>", methods=["POST"])
@@ -1283,12 +1322,28 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <p style="color:var(--text2);font-size:0.75rem;margin-top:0.3rem">Tip: Use the Generate Tests tab to create test cases, download as JSON, then upload here.</p>
       </details>
 
+      <div id="changeNoteRow" style="display:none;margin-bottom:0.5rem">
+        <div class="form-group">
+          <label>Change Note (what did you change and why?)</label>
+          <input type="text" id="mgrChangeNote" placeholder="e.g., Added DAX performance guidelines, strengthened RLS instructions">
+        </div>
+      </div>
       <div style="display:flex;gap:0.5rem">
         <button class="btn btn-primary" id="mgrCreateBtn" onclick="createRole()">Create Role</button>
         <button class="btn" id="mgrUpdateBtn" style="background:var(--purple);color:#fff;display:none" onclick="updateRole()">Update Role</button>
         <button class="btn" style="background:var(--surface2);color:var(--text)" onclick="clearRoleForm()">Clear Form</button>
       </div>
       <div class="result-flash" id="mgrResult" style="margin-top:0.75rem"></div>
+
+      <!-- Version History -->
+      <div id="versionSection" style="display:none;margin-top:1.5rem">
+        <h3 style="color:var(--accent);margin-bottom:0.5rem">Version History</h3>
+        <div id="versionList"></div>
+        <div id="versionDiff" style="display:none;margin-top:1rem">
+          <h4 style="color:var(--purple);margin-bottom:0.5rem">Version Comparison</h4>
+          <div id="versionDiffContent"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1713,6 +1768,106 @@ function handleTestsUpload(input) {
 // ── Manage Roles ──
 let _editingRole = null;
 
+function loadVersionHistory(slug) {
+  fetch('/api/role/versions/' + slug).then(r => r.json()).then(versions => {
+    const section = document.getElementById('versionSection');
+    const list = document.getElementById('versionList');
+    if (!versions.length) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+    list.innerHTML = `<table class="history-table" style="font-size:0.8rem">
+      <thead><tr><th>#</th><th>Timestamp</th><th>Version</th><th>Change Note</th><th>Prompt</th><th>Tests</th><th>Context</th><th>Actions</th></tr></thead>
+      <tbody>${versions.map(v => `<tr>
+        <td>${v.id}</td>
+        <td style="white-space:nowrap">${(v.timestamp||'').substring(0,10)} ${(v.timestamp||'').substring(11,16)}</td>
+        <td>${v.version || '-'}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${v.change_note||''}">${v.change_note || '-'}</td>
+        <td>${v.prompt_len ? v.prompt_len + ' chars <span style="color:var(--text2);font-size:0.7rem">(${v.prompt_hash})</span>' : '-'}</td>
+        <td>${v.test_len ? v.test_len + ' chars' : '-'}</td>
+        <td>${v.context_len ? v.context_len + ' chars' : '-'}</td>
+        <td>
+          <button class="btn" style="background:var(--surface2);color:var(--text);font-size:0.7rem;padding:0.2rem 0.4rem" onclick="viewVersion(${v.id})">View</button>
+          <button class="btn" style="background:var(--surface2);color:var(--text);font-size:0.7rem;padding:0.2rem 0.4rem" onclick="restoreVersion(${v.id})">Restore</button>
+          ${v.id > 1 ? '<button class="btn" style="background:var(--purple);color:#fff;font-size:0.7rem;padding:0.2rem 0.4rem" onclick="diffVersions(' + v.id + ')">Diff with prev</button>' : ''}
+        </td>
+      </tr>`).join('')}</tbody></table>`;
+  });
+}
+
+function viewVersion(versionId) {
+  fetch('/api/role/version/' + versionId).then(r => r.json()).then(v => {
+    const diff = document.getElementById('versionDiff');
+    diff.style.display = 'block';
+    document.getElementById('versionDiffContent').innerHTML = `
+      <div style="background:var(--bg);border-radius:8px;padding:1rem">
+        <div style="margin-bottom:0.5rem"><strong>Version:</strong> ${v.version || '-'} | <strong>Date:</strong> ${(v.timestamp||'').substring(0,16)} | <strong>Note:</strong> ${v.change_note || '-'}</div>
+        <details open><summary style="cursor:pointer;color:var(--accent);font-size:0.85rem">System Prompt (${(v.prompt_text||'').length} chars)</summary>
+          <pre style="background:var(--surface);padding:0.75rem;border-radius:6px;margin-top:0.3rem;font-size:0.75rem;max-height:300px;overflow-y:auto;white-space:pre-wrap">${(v.prompt_text||'(empty)').replace(/</g,'&lt;')}</pre>
+        </details>
+        <details><summary style="cursor:pointer;color:var(--accent);font-size:0.85rem;margin-top:0.5rem">Context (${(v.context_text||'').length} chars)</summary>
+          <pre style="background:var(--surface);padding:0.75rem;border-radius:6px;margin-top:0.3rem;font-size:0.75rem;max-height:200px;overflow-y:auto;white-space:pre-wrap">${(v.context_text||'(empty)').replace(/</g,'&lt;')}</pre>
+        </details>
+      </div>`;
+  });
+}
+
+function restoreVersion(versionId) {
+  if (!confirm('Restore this version? This will overwrite the current prompt and context.')) return;
+  fetch('/api/role/version/' + versionId).then(r => r.json()).then(v => {
+    document.getElementById('mgrPrompt').value = v.prompt_text || '';
+    document.getElementById('mgrContext').value = v.context_text || '';
+    if (v.test_cases) document.getElementById('mgrTests').value = v.test_cases;
+    alert('Version loaded into form. Click "Update Role" to save.');
+  });
+}
+
+function diffVersions(versionId) {
+  // Load this version and the previous one
+  fetch('/api/role/versions/' + _editingRole).then(r => r.json()).then(versions => {
+    const idx = versions.findIndex(v => v.id === versionId);
+    if (idx < 0 || idx >= versions.length - 1) { alert('No previous version to compare'); return; }
+    const currentId = versionId;
+    const prevId = versions[idx + 1].id;
+
+    Promise.all([
+      fetch('/api/role/version/' + prevId).then(r => r.json()),
+      fetch('/api/role/version/' + currentId).then(r => r.json()),
+    ]).then(([older, newer]) => {
+      const diff = document.getElementById('versionDiff');
+      diff.style.display = 'block';
+
+      // Simple line-by-line diff
+      const oldLines = (older.prompt_text||'').split('\\n');
+      const newLines = (newer.prompt_text||'').split('\\n');
+      let diffHtml = '';
+      const maxLen = Math.max(oldLines.length, newLines.length);
+      for (let i = 0; i < maxLen; i++) {
+        const o = oldLines[i] || '';
+        const n = newLines[i] || '';
+        if (o === n) {
+          diffHtml += `<div style="font-size:0.75rem;color:var(--text2);padding:0 0.5rem">${n.replace(/</g,'&lt;') || '&nbsp;'}</div>`;
+        } else if (!o && n) {
+          diffHtml += `<div style="font-size:0.75rem;background:rgba(34,197,94,0.15);color:var(--green);padding:0 0.5rem">+ ${n.replace(/</g,'&lt;')}</div>`;
+        } else if (o && !n) {
+          diffHtml += `<div style="font-size:0.75rem;background:rgba(239,68,68,0.15);color:var(--red);padding:0 0.5rem">- ${o.replace(/</g,'&lt;')}</div>`;
+        } else {
+          diffHtml += `<div style="font-size:0.75rem;background:rgba(239,68,68,0.1);color:var(--red);padding:0 0.5rem">- ${o.replace(/</g,'&lt;')}</div>`;
+          diffHtml += `<div style="font-size:0.75rem;background:rgba(34,197,94,0.1);color:var(--green);padding:0 0.5rem">+ ${n.replace(/</g,'&lt;')}</div>`;
+        }
+      }
+
+      document.getElementById('versionDiffContent').innerHTML = `
+        <div style="margin-bottom:0.5rem;font-size:0.85rem">
+          <span style="color:var(--red)">v${older.id} (${(older.timestamp||'').substring(0,10)})</span>
+          → <span style="color:var(--green)">v${newer.id} (${(newer.timestamp||'').substring(0,10)})</span>
+          | ${older.change_note || ''} → ${newer.change_note || ''}
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:0.75rem;max-height:400px;overflow-y:auto;font-family:monospace">
+          ${diffHtml}
+        </div>`;
+    });
+  });
+}
+
 function loadRole(slug) {
   fetch('/api/role/' + slug).then(r => r.json()).then(data => {
     if (data.error) { alert(data.error); return; }
@@ -1727,6 +1882,9 @@ function loadRole(slug) {
     document.getElementById('roleFormTitle').textContent = 'Edit Role: ' + slug;
     document.getElementById('mgrCreateBtn').style.display = 'none';
     document.getElementById('mgrUpdateBtn').style.display = 'inline-block';
+    document.getElementById('changeNoteRow').style.display = 'block';
+    document.getElementById('mgrChangeNote').value = '';
+    loadVersionHistory(slug);
   });
 }
 
@@ -1742,6 +1900,9 @@ function clearRoleForm() {
   document.getElementById('roleFormTitle').textContent = 'Create New Role';
   document.getElementById('mgrCreateBtn').style.display = 'inline-block';
   document.getElementById('mgrUpdateBtn').style.display = 'none';
+  document.getElementById('changeNoteRow').style.display = 'none';
+  document.getElementById('versionSection').style.display = 'none';
+  document.getElementById('versionDiff').style.display = 'none';
   document.getElementById('mgrResult').classList.remove('active');
 }
 
@@ -1779,16 +1940,21 @@ function updateRole() {
   if (!_editingRole) return;
   const prompt = document.getElementById('mgrPrompt').value.trim();
   const context = document.getElementById('mgrContext').value.trim();
+  const change_note = document.getElementById('mgrChangeNote').value.trim();
+
+  if (!change_note) { alert('Please add a change note describing what you changed.'); return; }
 
   fetch('/api/role/update', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({slug: _editingRole, prompt, context})
+    body: JSON.stringify({slug: _editingRole, prompt, context, change_note})
   }).then(r => r.json()).then(d => {
     const flash = document.getElementById('mgrResult');
     if (d.success) {
       flash.className = 'result-flash active success';
-      flash.innerHTML = '<strong>Role updated!</strong> Changes: ' + JSON.stringify(d.updates) + '. Restart dashboard to reload prompt changes.';
+      flash.innerHTML = '<strong>Role updated!</strong> Changes: ' + JSON.stringify(d.updates) + '. Version saved. Restart dashboard to reload prompt changes.';
+      loadVersionHistory(_editingRole);
+      document.getElementById('mgrChangeNote').value = '';
     } else {
       flash.className = 'result-flash active error';
       flash.innerHTML = '<strong>Error:</strong> ' + (d.error || 'Unknown error');
