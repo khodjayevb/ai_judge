@@ -77,14 +77,20 @@ def init_db():
             avg_adequate REAL,
             avg_poor    REAL,
             avg_misleading REAL,
-            details     TEXT
+            details     TEXT,
+            report_path TEXT
         )
     """)
+    # Migration for existing calibration tables
+    try:
+        conn.execute("ALTER TABLE calibration_runs ADD COLUMN report_path TEXT")
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
 
-def log_calibration(result: dict, judge_model: str = "") -> int:
+def log_calibration(result: dict, judge_model: str = "", report_path: str = "") -> int:
     """Log a calibration run."""
     init_db()
     conn = _get_conn()
@@ -94,8 +100,8 @@ def log_calibration(result: dict, judge_model: str = "") -> int:
             INSERT INTO calibration_runs (
                 timestamp, judge_model, accuracy, discrimination, avg_deviation,
                 total_tests, passed, failed, issues_count,
-                avg_excellent, avg_adequate, avg_poor, avg_misleading, details
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                avg_excellent, avg_adequate, avg_poor, avg_misleading, details, report_path
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             datetime.now().isoformat(),
             judge_model,
@@ -111,6 +117,7 @@ def log_calibration(result: dict, judge_model: str = "") -> int:
             bq.get("poor", {}).get("avg_geval", 0),
             bq.get("misleading", {}).get("avg_geval", 0),
             json.dumps(result.get("consistency_issues", [])),
+            report_path,
         ))
         conn.commit()
         return cursor.lastrowid

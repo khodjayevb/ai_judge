@@ -427,10 +427,16 @@ def api_calibrate():
 
             result = run_calibration(on_progress=on_progress)
 
+            # Generate report
+            from evaluators.judge_calibration import generate_calibration_report
+            judge_cfg = config.get_judge_config()
+            _judge_name = f"{judge_cfg['model']} ({judge_cfg['provider']})"
+            report_path = generate_calibration_report(result, judge_model=_judge_name)
+            result["report_url"] = f"/reports/{Path(report_path).name}"
+
             # Log to calibration history
             from results_db import log_calibration
-            judge_cfg = config.get_judge_config()
-            cal_id = log_calibration(result, judge_model=f"{judge_cfg['model']} ({judge_cfg['provider']})")
+            cal_id = log_calibration(result, judge_model=_judge_name, report_path=report_path)
             result["cal_id"] = cal_id
 
             _jobs[job_id]["status"] = "done"
@@ -1650,9 +1656,9 @@ function buildCalibrationTable(runs) {
   return `<table class="history-table" style="font-size:0.8rem">
     <thead><tr>
       <th>#</th><th>Timestamp</th><th>Judge Model</th>
-      <th>Accuracy</th><th>Discrimination</th><th>Avg Deviation</th>
+      <th>Accuracy</th><th>Discrimination</th><th>Avg Dev</th>
       <th>Excellent</th><th>Adequate</th><th>Poor</th><th>Misleading</th>
-      <th>Pass/Fail</th><th>Issues</th>
+      <th>Pass/Fail</th><th>Issues</th><th>Report</th>
     </tr></thead>
     <tbody>${runs.map(run => {
       const accColor = run.accuracy >= 80 ? 'var(--green)' : run.accuracy >= 60 ? 'var(--yellow)' : 'var(--red)';
@@ -1670,6 +1676,7 @@ function buildCalibrationTable(runs) {
         <td style="color:var(--orange)">${run.avg_misleading}</td>
         <td>${run.passed}/${run.total_tests}</td>
         <td style="color:${run.issues_count > 0 ? 'var(--red)' : 'var(--green)'}">${run.issues_count}</td>
+        <td>${run.report_path ? '<a href="/reports/' + run.report_path.split(/[/\\]/).pop() + '" target="_blank">View</a>' : '-'}</td>
       </tr>`;
     }).join('')}</tbody></table>`;
 }
