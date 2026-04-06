@@ -89,10 +89,7 @@ def main():
         border_style="cyan",
     ))
 
-    if config.MODE == "demo":
-        console.print("[yellow]Running in demo mode (no API key needed).[/]")
-        console.print("[dim]Set EVAL_MODE=live and configure TARGET_PROVIDER in .env for live evaluation.[/]\n")
-    elif prompt_source == "none":
+    if prompt_source == "none":
         console.print("[yellow]System prompt source: NONE — testing the model's deployed/built-in prompt.[/]\n")
     elif prompt_source.startswith("file:"):
         console.print(f"[yellow]System prompt source: {prompt_source}[/]\n")

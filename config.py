@@ -20,11 +20,9 @@ if _env_path.exists():
                 os.environ[key] = value
 
 # --------------------------------------------------------------------------
-# MODE: "demo" or "live"
-#   - "demo" : Pre-generated responses, no API key needed
-#   - "live" : Uses TARGET_PROVIDER and JUDGE_PROVIDER for real API calls
+# MODE: always "live" — makes real API calls
 # --------------------------------------------------------------------------
-MODE = os.getenv("EVAL_MODE", "demo")
+MODE = "live"
 
 # --------------------------------------------------------------------------
 # TARGET MODEL — the model being evaluated

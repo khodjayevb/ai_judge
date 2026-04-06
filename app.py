@@ -494,7 +494,7 @@ def api_save_settings():
         "# AI Evaluation Framework — BYOK Configuration",
         "# ============================================================================",
         "",
-        f"EVAL_MODE={settings.get('EVAL_MODE', 'live')}",
+        "EVAL_MODE=live",
         f"EVAL_ROLE={settings.get('EVAL_ROLE', 'azure_data_engineer')}",
         "",
         f"TARGET_PROVIDER={settings.get('TARGET_PROVIDER', 'azure')}",
@@ -1065,9 +1065,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
     <h1 style="margin:0;font-size:1.5rem">AI Evaluation Framework</h1>
     <div style="display:flex;gap:0.5rem;align-items:center">
-      <span style="background:{{'var(--green)' if config.MODE == 'live' else 'var(--yellow)'}};color:#000;padding:0.3rem 0.7rem;border-radius:6px;font-size:0.8rem;font-weight:600">
-        {{ config.MODE.upper() }}
-      </span>
+      <span style="background:var(--green);color:#000;padding:0.3rem 0.7rem;border-radius:6px;font-size:0.8rem;font-weight:600">LIVE</span>
       <button onclick="toggleTheme()" style="background:var(--surface);border:1px solid var(--surface2);border-radius:8px;padding:0.4rem 0.7rem;cursor:pointer;color:var(--text);font-size:0.85rem" title="Toggle light/dark theme" id="themeBtn">☀️ Light</button>
       <button onclick="toggleSettings()" style="background:var(--surface);border:1px solid var(--surface2);border-radius:8px;padding:0.4rem 0.7rem;cursor:pointer;color:var(--text);font-size:0.85rem" title="Settings">⚙️ Settings</button>
     </div>
@@ -2246,7 +2244,7 @@ function loadSettings() {
 
 function saveSettings() {
   const settings = {
-    EVAL_MODE: 'live',
+    // EVAL_MODE removed — always live
     TARGET_PROVIDER: document.getElementById('setTargetProvider').value,
     TARGET_API_KEY: document.getElementById('setTargetKey').value,
     TARGET_MODEL: document.getElementById('setTargetModel').value,
