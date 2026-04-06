@@ -669,6 +669,93 @@ def api_update_role():
     return jsonify({"success": True, "updates": updates})
 
 
+@app.route("/api/test-connection", methods=["POST"])
+def api_test_connection():
+    """Test API connection to the provider."""
+    data = request.json
+    provider = data.get("provider", "azure")
+    base_url = data.get("base_url", "")
+    api_key = data.get("api_key", "")
+    model = data.get("model", "")
+    api_version = data.get("api_version", "2024-08-01-preview")
+
+    try:
+        if provider == "azure":
+            from openai import AzureOpenAI
+            client = AzureOpenAI(azure_endpoint=base_url, api_key=api_key, api_version=api_version)
+            r = client.chat.completions.create(
+                model=model, messages=[{"role": "user", "content": "Say OK"}],
+                max_completion_tokens=5,
+            )
+            return jsonify({"success": True, "model": r.model, "message": "Connected successfully"})
+        elif provider == "azure_assistant":
+            from openai import AzureOpenAI
+            client = AzureOpenAI(azure_endpoint=base_url, api_key=api_key, api_version=api_version)
+            # List assistants to verify connection
+            assistants = client.beta.assistants.list(limit=5)
+            names = [a.name or a.id for a in assistants.data]
+            return jsonify({"success": True, "assistants": names, "message": f"Connected — {len(names)} assistant(s) found"})
+        elif provider == "openai":
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key)
+            r = client.chat.completions.create(
+                model=model or "gpt-4o-mini", messages=[{"role": "user", "content": "Say OK"}],
+                max_tokens=5,
+            )
+            return jsonify({"success": True, "model": r.model, "message": "Connected successfully"})
+        else:
+            return jsonify({"success": False, "message": f"Test not implemented for provider: {provider}"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)[:300]})
+
+
+@app.route("/api/test-assistant", methods=["POST"])
+def api_test_assistant():
+    """Test a specific Foundry Assistant by ID."""
+    data = request.json
+    assistant_id = data.get("assistant_id", "")
+    base_url = data.get("base_url", config.get_target_config()["base_url"])
+    api_key = data.get("api_key", config.get_target_config()["api_key"])
+    api_version = data.get("api_version", config.get_target_config()["api_version"])
+
+    if not assistant_id:
+        return jsonify({"success": False, "message": "No assistant ID provided"})
+
+    try:
+        from openai import AzureOpenAI
+        import time as _time
+        client = AzureOpenAI(azure_endpoint=base_url, api_key=api_key, api_version=api_version)
+
+        # Create thread, send test message, run assistant
+        thread = client.beta.threads.create()
+        client.beta.threads.messages.create(thread_id=thread.id, role="user", content="Say OK in one word.")
+        run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=assistant_id)
+
+        # Poll (max 30 seconds)
+        for _ in range(30):
+            run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+            if run.status not in ("queued", "in_progress"):
+                break
+            _time.sleep(1)
+
+        if run.status == "completed":
+            msgs = client.beta.threads.messages.list(thread_id=thread.id, order="desc", limit=1)
+            response = ""
+            if msgs.data:
+                for block in msgs.data[0].content:
+                    if hasattr(block, "text"):
+                        response += block.text.value
+            try:
+                client.beta.threads.delete(thread.id)
+            except Exception:
+                pass
+            return jsonify({"success": True, "response": response[:100], "message": "Assistant responded successfully"})
+        else:
+            return jsonify({"success": False, "message": f"Run status: {run.status}"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)[:300]})
+
+
 @app.route("/api/role/versions/<slug>")
 def api_role_versions(slug):
     from results_db import get_role_versions
@@ -997,87 +1084,100 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <!-- Settings Modal -->
   <div id="settingsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;overflow-y:auto">
     <div style="max-width:900px;margin:2rem auto;background:var(--bg);border-radius:16px;padding:2rem;border:1px solid var(--surface2)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem">
         <h2 style="color:var(--accent);margin:0;border:none">Settings</h2>
         <button onclick="toggleSettings()" style="background:var(--surface2);border:none;border-radius:8px;padding:0.4rem 0.8rem;cursor:pointer;color:var(--text);font-size:1rem">✕ Close</button>
       </div>
-      <p style="color:var(--text2);font-size:0.85rem;margin-bottom:1rem">Configure target model, judge model, and per-role Foundry Assistant mappings.</p>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
-        <div style="background:var(--surface);border-radius:8px;padding:1.25rem">
-          <h4 style="color:var(--accent);margin-bottom:0.75rem">Target Model</h4>
-          <div class="form-group" style="margin-bottom:0.5rem">
+      <!-- Section 1: Connection -->
+      <div style="background:var(--surface);border-radius:8px;padding:1.25rem;margin-bottom:1rem">
+        <h4 style="color:var(--accent);margin-bottom:0.75rem">Connection</h4>
+        <div class="form-row">
+          <div class="form-group">
             <label>Provider</label>
             <select id="setTargetProvider">
               <option value="azure">Azure OpenAI</option>
               <option value="azure_assistant">Azure Foundry Assistant</option>
-              <option value="azure_foundry">Azure AI Foundry</option>
               <option value="openai">OpenAI</option>
               <option value="anthropic">Anthropic / Claude</option>
               <option value="google">Google Gemini</option>
               <option value="ollama">Ollama (local)</option>
             </select>
           </div>
-          <div class="form-group" style="margin-bottom:0.5rem">
-            <label>API Key</label>
-            <input type="password" id="setTargetKey" placeholder="API key">
-          </div>
-          <div class="form-group" style="margin-bottom:0.5rem">
-            <label>Model / Deployment</label>
-            <input type="text" id="setTargetModel" placeholder="e.g., gpt-4o">
-          </div>
-          <div class="form-group" style="margin-bottom:0.5rem">
+          <div class="form-group">
             <label>Base URL</label>
             <input type="text" id="setTargetURL" placeholder="https://your-resource.openai.azure.com">
           </div>
           <div class="form-group">
-            <label>API Version</label>
-            <input type="text" id="setTargetVersion" placeholder="2024-08-01-preview">
+            <label>API Key</label>
+            <input type="password" id="setTargetKey" placeholder="API key">
+          </div>
+          <div class="form-group" style="flex:0">
+            <label>&nbsp;</label>
+            <button class="btn" style="background:var(--green);color:#000;white-space:nowrap" onclick="testConnection()">Test Connection</button>
+          </div>
+        </div>
+        <div id="connectionStatus" style="font-size:0.85rem;margin-top:0.3rem"></div>
+      </div>
+
+      <!-- Section 2: Model Defaults -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+        <div style="background:var(--surface);border-radius:8px;padding:1.25rem">
+          <h4 style="color:var(--accent);margin-bottom:0.75rem">Default Target Model</h4>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Model / Deployment</label>
+            <input type="text" id="setTargetModel" placeholder="e.g., gpt-4o, gpt-4.1">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Temperature</label>
+              <input type="number" id="setTemperature" value="0.3" min="0" max="1" step="0.1" style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.4rem;width:80px">
+            </div>
+            <div class="form-group">
+              <label>Top P</label>
+              <input type="number" id="setTopP" value="0.95" min="0" max="1" step="0.05" style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:6px;padding:0.4rem;width:80px">
+            </div>
+            <div class="form-group">
+              <label>API Version</label>
+              <input type="text" id="setTargetVersion" placeholder="2024-08-01-preview" style="max-width:180px">
+            </div>
           </div>
         </div>
         <div style="background:var(--surface);border-radius:8px;padding:1.25rem">
           <h4 style="color:var(--purple);margin-bottom:0.75rem">Judge Model</h4>
-          <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.5rem">Leave empty to use same as target.</p>
-          <div class="form-group" style="margin-bottom:0.5rem">
-            <label>Provider</label>
-            <select id="setJudgeProvider">
-              <option value="">(same as target)</option>
-              <option value="azure">Azure OpenAI</option>
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic / Claude</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom:0.5rem">
-            <label>API Key</label>
-            <input type="password" id="setJudgeKey" placeholder="(falls back to target)">
-          </div>
+          <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.5rem">Should be stronger than target. Leave empty = same as target.</p>
           <div class="form-group" style="margin-bottom:0.5rem">
             <label>Model / Deployment</label>
             <input type="text" id="setJudgeModel" placeholder="e.g., gpt-5.4">
           </div>
           <div class="form-group">
-            <label>Base URL</label>
-            <input type="text" id="setJudgeURL" placeholder="(falls back to target)">
+            <label>Judge API Key (if different)</label>
+            <input type="password" id="setJudgeKey" placeholder="(falls back to target key)">
           </div>
         </div>
       </div>
 
-      <h4 style="color:var(--accent);margin-top:1.5rem;margin-bottom:0.5rem">Per-Role Foundry Assistant Mapping</h4>
-      <table class="history-table" style="font-size:0.85rem">
-        <thead><tr><th>Role</th><th>Assistant ID</th><th>Description</th></tr></thead>
-        <tbody>
-          {% for r in roles %}
-          <tr>
-            <td style="color:var(--accent);font-weight:600">{{ r.slug }}</td>
-            <td><input type="text" id="asst_{{ r.slug }}" placeholder="asst_abc123..." style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:4px;padding:0.3rem 0.5rem;width:100%;font-size:0.85rem;font-family:monospace"></td>
-            <td style="color:var(--text2);font-size:0.8rem">{{ r.name }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <!-- Section 3: Per-Role Assistant Mapping -->
+      <div style="background:var(--surface);border-radius:8px;padding:1.25rem;margin-bottom:1rem">
+        <h4 style="color:var(--accent);margin-bottom:0.5rem">Per-Role Foundry Assistant Mapping</h4>
+        <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.75rem">Optional — when provider is "Azure Foundry Assistant", each role uses its own assistant with baked-in prompt and settings.</p>
+        <table class="history-table" style="font-size:0.85rem">
+          <thead><tr><th>Role</th><th>Assistant ID</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for r in roles %}
+            <tr>
+              <td style="color:var(--accent);font-weight:600">{{ r.slug }}</td>
+              <td><input type="text" id="asst_{{ r.slug }}" placeholder="asst_abc123..." style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:4px;padding:0.3rem 0.5rem;width:100%;font-size:0.85rem;font-family:monospace"></td>
+              <td id="asst_status_{{ r.slug }}" style="font-size:0.8rem;color:var(--text2)">—</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <button class="btn" style="background:var(--surface2);color:var(--text);font-size:0.8rem;margin-top:0.5rem" onclick="testAllAssistants()">Test All Assistants</button>
+      </div>
 
-      <div style="display:flex;gap:0.5rem;margin-top:1rem">
-        <button class="btn btn-primary" onclick="saveSettings()">Save & Restart Required</button>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
         <button class="btn" style="background:var(--surface2);color:var(--text)" onclick="loadSettings()">Reload</button>
       </div>
       <div class="result-flash" id="settingsResult" style="margin-top:0.75rem"></div>
@@ -2197,6 +2297,58 @@ function saveSettings() {
       flash.className = 'result-flash active error';
       flash.innerHTML = '<strong>Error:</strong> ' + (d.error || d.message);
     }
+  });
+}
+
+function testConnection() {
+  const status = document.getElementById('connectionStatus');
+  status.innerHTML = '<span style="color:var(--yellow)">Testing connection...</span>';
+
+  fetch('/api/test-connection', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      provider: document.getElementById('setTargetProvider').value,
+      base_url: document.getElementById('setTargetURL').value,
+      api_key: document.getElementById('setTargetKey').value,
+      model: document.getElementById('setTargetModel').value,
+      api_version: document.getElementById('setTargetVersion').value,
+    })
+  }).then(r => r.json()).then(d => {
+    if (d.success) {
+      status.innerHTML = '<span style="color:var(--green);font-weight:600">&#10004; ' + d.message + '</span>';
+    } else {
+      status.innerHTML = '<span style="color:var(--red)">&#10008; ' + d.message + '</span>';
+    }
+  }).catch(e => {
+    status.innerHTML = '<span style="color:var(--red)">&#10008; Error: ' + e.message + '</span>';
+  });
+}
+
+function testAllAssistants() {
+  document.querySelectorAll('[id^="asst_status_"]').forEach(el => el.textContent = '...');
+
+  document.querySelectorAll('[id^="asst_"]').forEach(el => {
+    if (el.id.startsWith('asst_status_')) return;
+    const slug = el.id.replace('asst_', '');
+    const assistantId = el.value.trim();
+    const statusEl = document.getElementById('asst_status_' + slug);
+    if (!assistantId) { statusEl.textContent = '—'; return; }
+
+    statusEl.innerHTML = '<span style="color:var(--yellow)">Testing...</span>';
+    fetch('/api/test-assistant', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({assistant_id: assistantId})
+    }).then(r => r.json()).then(d => {
+      if (d.success) {
+        statusEl.innerHTML = '<span style="color:var(--green)">&#10004; OK</span>';
+      } else {
+        statusEl.innerHTML = '<span style="color:var(--red)">&#10008; ' + (d.message||'').substring(0,50) + '</span>';
+      }
+    }).catch(() => {
+      statusEl.innerHTML = '<span style="color:var(--red)">&#10008; Error</span>';
+    });
   });
 }
 
