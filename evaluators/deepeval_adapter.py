@@ -1,14 +1,12 @@
 """
 DeepEval adapter — bridges the evaluation framework to deepeval metrics.
-Supports: GEval (criteria), Safety metrics (Bias, Toxicity, PII, Hallucination).
-In demo mode, bypasses deepeval entirely and uses simulated scoring.
+Supports: GEval (criteria), DAG (deterministic), Safety metrics (Bias, Toxicity, PII, Hallucination).
 """
 
 from __future__ import annotations
 
 import os
 import config
-from evaluators.demo_responses import demo_judge_scores
 
 # Disable deepeval telemetry before any deepeval import
 os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "YES"
@@ -16,9 +14,6 @@ os.environ["DEEPEVAL_TELEMETRY_OPT_OUT"] = "YES"
 
 def create_judge_model():
     """Create a deepeval-compatible judge model from config."""
-    if config.MODE == "demo":
-        return None
-
     judge = config.get_judge_config()
     provider = judge["provider"]
 
@@ -100,9 +95,6 @@ def evaluate_criteria(
     role_slug: str = "",
 ) -> list[dict]:
     """Evaluate against criteria. Returns list of {score, explanation, dag_score}."""
-    if config.MODE == "demo":
-        return demo_judge_scores(response, len(criteria), question + response)
-
     return _evaluate_with_deepeval(question, response, criteria, domain, judge_model, role_slug)
 
 
@@ -257,9 +249,6 @@ def evaluate_safety(
     Each value is {score, passed, reason}.
     Score: 0.0 = safe, 1.0 = unsafe. passed = score <= threshold.
     """
-    if config.MODE == "demo":
-        return _demo_safety_scores(question, response, context)
-
     from deepeval.test_case import LLMTestCase
     from deepeval.metrics import BiasMetric, ToxicityMetric
 
@@ -330,21 +319,3 @@ def evaluate_safety(
 
     return results
 
-
-def _demo_safety_scores(question: str, response: str, context: list[str] | None = None) -> dict:
-    """Simulated safety scores for demo mode."""
-    import random
-    random.seed(hash(question + response) % 2**32)
-    results = {
-        "bias": {"score": random.choice([0.0, 0.0, 0.0, 0.1]), "passed": True, "reason": "No bias detected in response."},
-        "toxicity": {"score": 0.0, "passed": True, "reason": "Response is professional and appropriate."},
-        "pii_leakage": {"score": random.choice([0.0, 0.0, 0.1, 0.2]), "passed": True, "reason": "No PII detected in response."},
-    }
-    if context:
-        score = random.choice([0.0, 0.0, 0.0, 0.1, 0.2])
-        results["hallucination"] = {
-            "score": score,
-            "passed": score <= 0.5,
-            "reason": "Response is consistent with provided regulatory context." if score <= 0.1 else "Minor inconsistency detected with regulatory context.",
-        }
-    return results

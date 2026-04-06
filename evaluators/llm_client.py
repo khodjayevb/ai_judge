@@ -1,17 +1,24 @@
 """
 BYOK LLM client — supports any provider for the target model.
-Providers: openai, anthropic, azure, azure_foundry, google, ollama
+Providers: openai, anthropic, azure, azure_assistant, azure_foundry, google, ollama
 Returns response text + performance metrics (latency, tokens, cost).
 """
 
 from __future__ import annotations
 
 import time
+import logging
 from pathlib import Path
 from dataclasses import dataclass, field
 
 import config
-from evaluators.demo_responses import get_demo_response
+
+logger = logging.getLogger(__name__)
+
+# ── Retry + Timeout Configuration ────────────────────────────────────
+MAX_RETRIES = 3
+RETRY_DELAY_SECONDS = 2  # doubles each retry (2, 4, 8)
+API_TIMEOUT_SECONDS = 120  # max seconds per API call
 
 
 @dataclass
@@ -37,6 +44,28 @@ class ResponseMetrics:
             "model_id": self.model_id,
             "estimated_cost_usd": round(self.estimated_cost_usd, 6),
         }
+
+
+def _with_retry(fn, *args, **kwargs):
+    """Call fn with retry logic. Retries on transient errors (rate limit, timeout, connection)."""
+    last_error = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            last_error = e
+            err_str = str(e).lower()
+            # Only retry on transient errors
+            is_transient = any(t in err_str for t in [
+                "rate limit", "429", "timeout", "connection", "502", "503", "504",
+                "server error", "overloaded", "capacity", "retry",
+            ])
+            if not is_transient or attempt == MAX_RETRIES - 1:
+                raise
+            delay = RETRY_DELAY_SECONDS * (2 ** attempt)
+            logger.warning(f"API call failed (attempt {attempt+1}/{MAX_RETRIES}), retrying in {delay}s: {e}")
+            time.sleep(delay)
+    raise last_error
 
 
 # Rough cost per 1M tokens (input/output) — update as pricing changes
@@ -67,7 +96,7 @@ def _create_client(cfg: dict):
 
     if provider == "openai":
         from openai import OpenAI
-        kwargs = {"api_key": cfg["api_key"]}
+        kwargs = {"api_key": cfg["api_key"], "timeout": API_TIMEOUT_SECONDS}
         if cfg["base_url"]:
             kwargs["base_url"] = cfg["base_url"]
         client = OpenAI(**kwargs)
@@ -101,7 +130,7 @@ def _create_client(cfg: dict):
 
     elif provider == "anthropic":
         from anthropic import Anthropic
-        kwargs = {"api_key": cfg["api_key"]}
+        kwargs = {"api_key": cfg["api_key"], "timeout": API_TIMEOUT_SECONDS}
         if cfg["base_url"]:
             kwargs["base_url"] = cfg["base_url"]
         client = Anthropic(**kwargs)
@@ -135,6 +164,7 @@ def _create_client(cfg: dict):
         client = AzureOpenAI(
             azure_endpoint=cfg["base_url"], api_key=cfg["api_key"],
             api_version=cfg.get("api_version", "2024-08-01-preview"),
+            timeout=API_TIMEOUT_SECONDS,
         )
         deployment = cfg.get("deployment") or cfg["model"]
 
@@ -171,6 +201,7 @@ def _create_client(cfg: dict):
         client = AzureOpenAI(
             azure_endpoint=cfg["base_url"], api_key=cfg["api_key"],
             api_version=cfg.get("api_version", "2024-08-01-preview"),
+            timeout=API_TIMEOUT_SECONDS,
         )
         assistant_id = cfg.get("deployment") or cfg["model"]  # Assistant ID
 
@@ -228,7 +259,7 @@ def _create_client(cfg: dict):
         base = cfg["base_url"].rstrip("/")
         if not base.endswith("/openai/v1"):
             base += "/openai/v1/"
-        client = OpenAI(base_url=base, api_key=cfg["api_key"])
+        client = OpenAI(base_url=base, api_key=cfg["api_key"], timeout=API_TIMEOUT_SECONDS)
         model = cfg.get("deployment") or cfg["model"]
 
         def _call(system_prompt: str, user_message: str, **kw) -> tuple[str, ResponseMetrics]:
@@ -291,7 +322,7 @@ def _create_client(cfg: dict):
     elif provider == "ollama":
         from openai import OpenAI
         base = cfg["base_url"] or "http://localhost:11434/v1"
-        client = OpenAI(base_url=base, api_key="ollama")
+        client = OpenAI(base_url=base, api_key="ollama", timeout=API_TIMEOUT_SECONDS)
         model = cfg["model"]
 
         def _call(system_prompt: str, user_message: str, **kw) -> tuple[str, ResponseMetrics]:
@@ -378,17 +409,12 @@ def chat(
     role_slug: str = "azure_data_engineer",
     temperature: float | None = None,
 ) -> tuple[str, ResponseMetrics]:
-    """Send a chat completion. Returns (response_text, metrics)."""
-    if config.MODE == "demo":
-        is_weak = len(system_prompt.strip()) < 500
-        text = get_demo_response(role_slug, user_message, weak=is_weak)
-        return text, ResponseMetrics(
-            response_chars=len(text),
-            response_words=len(text.split()),
-            model_id="demo",
-        )
-
+    """Send a chat completion with retry. Returns (response_text, metrics)."""
     resolved_prompt = resolve_system_prompt(system_prompt)
     client_fn = _get_target_client(role_slug=role_slug)
-    return client_fn(resolved_prompt, user_message,
-                     temperature=temperature if temperature is not None else config.TEMPERATURE)
+
+    def _call():
+        return client_fn(resolved_prompt, user_message,
+                         temperature=temperature if temperature is not None else config.TEMPERATURE)
+
+    return _with_retry(_call)
