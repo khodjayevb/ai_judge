@@ -115,9 +115,9 @@
 - [x] Add configurable timeout on API calls ✅ _Done: API_TIMEOUT_SECONDS=120 on all client constructors_
 - [x] Remove dead demo response code ✅ _Done: deleted 1,700 lines (demo_responses.py + all demo branches)_
 - [ ] Consolidate Windows emoji patches into one utility
-- [ ] Add structured logging (Python logging module)
-- [ ] Validate test case format before evaluation
-- [ ] Handle empty test suites gracefully
+- [x] Add structured logging (Python logging module) ✅ _Done: INFO/WARNING/ERROR with timestamps across scorer + llm_client_
+- [x] Validate test case format before evaluation ✅ _Done: validate_test_cases() checks fields, types, returns warnings_
+- [x] Handle empty test suites gracefully ✅ _Done: TestCaseValidationError raised before any API calls + per-test error resilience_
 
 ### Frontend
 - [ ] Consistent button styles across all tabs
