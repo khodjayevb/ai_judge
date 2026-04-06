@@ -1065,7 +1065,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
     <h1 style="margin:0;font-size:1.5rem">AI Evaluation Framework</h1>
     <div style="display:flex;gap:0.5rem;align-items:center">
-      <span style="background:var(--green);color:#000;padding:0.3rem 0.7rem;border-radius:6px;font-size:0.8rem;font-weight:600">LIVE</span>
       <button onclick="toggleTheme()" style="background:var(--surface);border:1px solid var(--surface2);border-radius:8px;padding:0.4rem 0.7rem;cursor:pointer;color:var(--text);font-size:0.85rem" title="Toggle light/dark theme" id="themeBtn">☀️ Light</button>
       <button onclick="toggleSettings()" style="background:var(--surface);border:1px solid var(--surface2);border-radius:8px;padding:0.4rem 0.7rem;cursor:pointer;color:var(--text);font-size:0.85rem" title="Settings">⚙️ Settings</button>
     </div>
@@ -2099,7 +2098,7 @@ python app.py</code></pre>
   </div>
 
   <div class="footer">
-    <p>AI Evaluation Framework — DCRI Clinical Trials Data Management</p>
+    <p>AI Evaluation Framework</p>
   </div>
 </div>
 
