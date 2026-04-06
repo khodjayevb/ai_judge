@@ -205,6 +205,108 @@ GOLD_STANDARD = [
 ]
 
 
+GOLDEN_GENERATION_PROMPT = """You are creating gold standard test responses for judge calibration.
+
+Given these reference standards, generate {count} gold standard test items.
+Each item needs a question, a criterion, and 4 response versions at different quality levels.
+
+REFERENCE STANDARDS:
+{context}
+
+For each item, generate:
+- "question": A practical question a practitioner would ask
+- "criterion": A specific evaluation criterion from the reference standards
+- "excellent_response": Detailed, specific, correct, actionable (expected score: ~0.95)
+- "adequate_response": Mentioned but vague, lacks specifics (expected score: ~0.35)
+- "poor_response": Generic, useless, no actionable content (expected score: ~0.0)
+- "misleading_response": Confidently wrong — recommends something the reference explicitly says NOT to do (expected score: ~0.0)
+
+Return ONLY valid JSON array. No markdown fences.
+
+Example format:
+[{{"question": "...", "criterion": "...", "excellent_response": "...", "adequate_response": "...", "poor_response": "...", "misleading_response": "..."}}]
+"""
+
+
+def generate_goldens_from_docs(role_slug: str, count: int = 4) -> list[dict]:
+    """Generate role-specific gold standard items from reference docs."""
+    import config
+    from evaluators.judge_context import load_judge_context
+    from evaluators.llm_client import _create_client
+
+    context = load_judge_context(role_slug)
+    if not context:
+        return []
+
+    judge_cfg = config.get_judge_config()
+    client_fn = _create_client(judge_cfg)
+
+    prompt = GOLDEN_GENERATION_PROMPT.format(count=count, context=context[:6000])
+    text, _ = client_fn(
+        "You are a test data generator. Return only valid JSON.",
+        prompt, temperature=0.5,
+    )
+
+    # Parse JSON
+    try:
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```")[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+        items = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start = text.find("[")
+        end = text.rfind("]") + 1
+        if start >= 0 and end > start:
+            items = json.loads(text[start:end])
+        else:
+            return []
+
+    # Convert to GOLD_STANDARD format
+    goldens = []
+    for i, item in enumerate(items):
+        base = {
+            "domain": role_slug.replace("_", " ").title(),
+            "question": item.get("question", ""),
+            "criteria": [item.get("criterion", "")],
+        }
+        # Excellent
+        goldens.append({
+            **base,
+            "id": f"GEN-GOLD-{i+1:02d}-EX",
+            "quality": "excellent",
+            "response": item.get("excellent_response", ""),
+            "expected_scores": [0.95],
+        })
+        # Adequate
+        goldens.append({
+            **base,
+            "id": f"GEN-GOLD-{i+1:02d}-AD",
+            "quality": "adequate",
+            "response": item.get("adequate_response", ""),
+            "expected_scores": [0.35],
+        })
+        # Poor
+        goldens.append({
+            **base,
+            "id": f"GEN-GOLD-{i+1:02d}-PR",
+            "quality": "poor",
+            "response": item.get("poor_response", ""),
+            "expected_scores": [0.0],
+        })
+        # Misleading
+        goldens.append({
+            **base,
+            "id": f"GEN-GOLD-{i+1:02d}-ML",
+            "quality": "misleading",
+            "response": item.get("misleading_response", ""),
+            "expected_scores": [0.0],
+        })
+
+    return goldens
+
+
 def run_calibration(role_slug: str = "", on_progress=None) -> dict:
     """Run judge calibration against the gold standard set.
 
@@ -218,10 +320,20 @@ def run_calibration(role_slug: str = "", on_progress=None) -> dict:
     """
     judge_model = create_judge_model()
     results = []
-    total = sum(len(g["criteria"]) for g in GOLD_STANDARD)
+
+    # Combine hardcoded goldens + role-specific generated goldens
+    all_goldens = list(GOLD_STANDARD)
+    if role_slug:
+        if on_progress:
+            on_progress(0, 1, "Generating role-specific goldens...")
+        generated = generate_goldens_from_docs(role_slug, count=4)
+        if generated:
+            all_goldens.extend(generated)
+
+    total = sum(len(g["criteria"]) for g in all_goldens)
     progress = 0
 
-    for gold in GOLD_STANDARD:
+    for gold in all_goldens:
         domain = gold.get("domain", role_slug or "General")
 
         eval_results = evaluate_criteria(
@@ -320,6 +432,10 @@ def generate_calibration_report(result: dict, judge_model: str = "", output_path
     disc = result.get("discrimination", 0)
     dev = result.get("avg_deviation", 0)
     bq = result.get("by_quality", {})
+    bq_excellent = bq.get("excellent", {}).get("avg_geval", 0)
+    bq_adequate = bq.get("adequate", {}).get("avg_geval", 0)
+    bq_poor = bq.get("poor", {}).get("avg_geval", 0)
+    bq_misleading = bq.get("misleading", {}).get("avg_geval", 0)
     issues = result.get("consistency_issues", [])
     tests = result.get("results", [])
 
@@ -338,7 +454,7 @@ def generate_calibration_report(result: dict, judge_model: str = "", output_path
             <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{html_mod.escape(t['criterion'])}">{html_mod.escape(t['criterion'])}</td>
             <td style="text-align:center">{t['expected']:.2f}</td>
             <td style="text-align:center;font-weight:700">{t['geval']:.2f}</td>
-            <td style="text-align:center">{t['dag']:.2f if t['dag'] is not None else '-'}</td>
+            <td style="text-align:center">{f"{t['dag']:.2f}" if t['dag'] is not None else '-'}</td>
             <td style="text-align:center;color:{dev_color};font-weight:600">{t['deviation']:.2f}</td>
             <td style="text-align:center">{'<span style="color:#22c55e">PASS</span>' if t['passed'] else '<span style="color:#ef4444">FAIL</span>'}</td>
         </tr>"""
@@ -393,10 +509,10 @@ def generate_calibration_report(result: dict, judge_model: str = "", output_path
 
   <h2>Scores by Quality Tier</h2>
   <div class="metrics">
-    <div class="metric"><div class="val" style="color:#22c55e">{bq.get('excellent',{{}}).get('avg_geval',0)}</div><div class="lbl">Excellent</div><div class="hint">Should be high (~0.9)</div></div>
-    <div class="metric"><div class="val" style="color:#eab308">{bq.get('adequate',{{}}).get('avg_geval',0)}</div><div class="lbl">Adequate</div><div class="hint">Should be medium (~0.3)</div></div>
-    <div class="metric"><div class="val" style="color:#ef4444">{bq.get('poor',{{}}).get('avg_geval',0)}</div><div class="lbl">Poor</div><div class="hint">Should be low (~0.0)</div></div>
-    <div class="metric"><div class="val" style="color:#f97316">{bq.get('misleading',{{}}).get('avg_geval',0)}</div><div class="lbl">Misleading</div><div class="hint">Should be zero (trap test)</div></div>
+    <div class="metric"><div class="val" style="color:#22c55e">{bq_excellent}</div><div class="lbl">Excellent</div><div class="hint">Should be high (~0.9)</div></div>
+    <div class="metric"><div class="val" style="color:#eab308">{bq_adequate}</div><div class="lbl">Adequate</div><div class="hint">Should be medium (~0.3)</div></div>
+    <div class="metric"><div class="val" style="color:#ef4444">{bq_poor}</div><div class="lbl">Poor</div><div class="hint">Should be low (~0.0)</div></div>
+    <div class="metric"><div class="val" style="color:#f97316">{bq_misleading}</div><div class="lbl">Misleading</div><div class="hint">Should be zero (trap test)</div></div>
   </div>
 
   {issues_html}

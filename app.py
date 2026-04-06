@@ -421,6 +421,8 @@ def api_improve_prompt():
 
 @app.route("/api/calibrate", methods=["POST"])
 def api_calibrate():
+    data = request.json or {}
+    role = data.get("role", "")
     job_id = f"calibrate_{len(_jobs)}"
     _jobs[job_id] = {"status": "running", "progress": 0, "total": 1, "current_test": "Starting...", "result": None}
 
@@ -433,7 +435,7 @@ def api_calibrate():
                 _jobs[job_id]["total"] = total
                 _jobs[job_id]["current_test"] = label
 
-            result = run_calibration(on_progress=on_progress)
+            result = run_calibration(role_slug=role, on_progress=on_progress)
 
             # Generate report
             from evaluators.judge_calibration import generate_calibration_report
@@ -1013,12 +1015,38 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   select, input[type=text] { padding:0.55rem 0.8rem; border-radius:8px; border:1px solid var(--surface2); font-size:0.9rem; font-family:inherit; background:var(--bg); color:var(--text); }
   select:focus, input:focus { outline:none; border-color:var(--accent); }
 
-  .btn { padding:0.6rem 1.2rem; border-radius:8px; border:none; font-size:0.9rem; font-weight:600; cursor:pointer; transition:all 0.2s; font-family:inherit; }
+  .btn { padding:0.5rem 1rem; border-radius:8px; border:none; font-size:0.85rem; font-weight:600; cursor:pointer; transition:all 0.2s; font-family:inherit; white-space:nowrap; }
   .btn-primary { background:var(--accent); color:var(--bg); }
-  .btn-primary:hover { background:#7dd3fc; }
+  .btn-primary:hover { background:#7dd3fc; color:var(--bg); }
+  .btn-secondary { background:var(--surface2); color:var(--text); }
+  .btn-secondary:hover { background:var(--surface); }
   .btn-purple { background:var(--purple); color:#fff; }
-  .btn-purple:hover { background:#c4b5fd; }
-  .btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .btn-purple:hover { background:#c4b5fd; color:#000; }
+  .btn-danger { background:var(--red); color:#fff; }
+  .btn-danger:hover { background:#f87171; }
+  .btn-success { background:var(--green); color:#000; }
+  .btn-success:hover { background:#4ade80; }
+  .btn:disabled { opacity:0.4; cursor:not-allowed; pointer-events:none; }
+
+  /* Loading spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--surface2);
+    border-top-color:var(--accent); border-radius:50%; animation:spin 0.6s linear infinite;
+    vertical-align:middle; margin-right:0.4rem; }
+
+  /* Responsive */
+  @media(max-width:768px) {
+    .container { padding:1rem; }
+    .form-row { flex-direction:column; }
+    .form-group { min-width:100%; }
+    h1 { font-size:1.2rem; }
+  }
+
+  /* Consistent tables */
+  .history-table { font-size:0.8rem; }
+  .history-table th { position:sticky; top:0; z-index:1; }
+  .history-table td, .history-table th { white-space:nowrap; padding:0.5rem 0.6rem; }
+  .history-table td:last-child { text-align:center; }
 
   /* Tabs */
   .tabs { display:flex; gap:0; margin-bottom:0; }
@@ -1487,10 +1515,24 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="panel">
       <div class="panel-title">Judge Calibration — Gold Standard Validation</div>
       <p style="color:var(--text2);margin-bottom:1rem;font-size:0.9rem">
-        Tests whether your judge model scores accurately against pre-scored gold standard responses.
-        Includes excellent, adequate, poor, and deliberately misleading responses with known expected scores.
+        Tests judge accuracy against gold standard responses. Includes 8 hardcoded tests (generic) plus
+        auto-generated role-specific goldens from your reference docs.
       </p>
-      <button class="btn btn-primary" id="btnCalibrate" onclick="runCalibration()">Run Calibration Test</button>
+      <div class="form-row" style="margin-bottom:0.75rem">
+        <div class="form-group" style="max-width:250px">
+          <label>Role (for generated goldens)</label>
+          <select id="calRole">
+            <option value="">(generic only — no role-specific goldens)</option>
+            {% for r in roles %}
+            <option value="{{ r.slug }}">{{ r.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="flex:0">
+          <label>&nbsp;</label>
+          <button class="btn btn-primary" id="btnCalibrate" onclick="runCalibration()">Run Calibration Test</button>
+        </div>
+      </div>
       <div class="progress-area" id="calProgress">
         <div class="progress-bar-wrap"><div class="progress-bar" id="calBar" style="width:0%"></div></div>
         <div class="progress-text" id="calText">Calibrating...</div>
@@ -2112,6 +2154,18 @@ python app.py</code></pre>
 
 <script>
 // Tabs
+// ── UI Utilities ──
+function showToast(message, type) {
+  // Inline toast notification — replaces browser alert()
+  type = type || 'info';
+  const colors = {info: 'var(--accent)', success: 'var(--green)', error: 'var(--red)', warning: 'var(--yellow)'};
+  const toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:2000;background:var(--surface);border:1px solid ' + (colors[type]||colors.info) + ';border-radius:8px;padding:0.75rem 1.25rem;font-size:0.85rem;color:var(--text);max-width:400px;box-shadow:0 4px 12px rgba(0,0,0,0.3);animation:fadeIn 0.3s';
+  toast.innerHTML = '<span style="color:' + (colors[type]||colors.info) + ';font-weight:600;margin-right:0.5rem">' + (type === 'error' ? '✕' : type === 'success' ? '✓' : 'ℹ') + '</span>' + message;
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+}
+
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -2443,7 +2497,7 @@ function restoreVersion(versionId) {
     document.getElementById('mgrPrompt').value = v.prompt_text || '';
     document.getElementById('mgrContext').value = v.context_text || '';
     if (v.test_cases) document.getElementById('mgrTests').value = v.test_cases;
-    alert('Version loaded into form. Click "Update Role" to save.');
+    showToast('Version loaded into form. Click "Update Role" to save.', 'success');
   });
 }
 
@@ -2451,7 +2505,7 @@ function diffVersions(versionId) {
   // Load this version and the previous one
   fetch('/api/role/versions/' + _editingRole).then(r => r.json()).then(versions => {
     const idx = versions.findIndex(v => v.id === versionId);
-    if (idx < 0 || idx >= versions.length - 1) { alert('No previous version to compare'); return; }
+    if (idx < 0 || idx >= versions.length - 1) { showToast('No previous version to compare', 'warning'); return; }
     const currentId = versionId;
     const prevId = versions[idx + 1].id;
 
@@ -2507,7 +2561,7 @@ function diffVersions(versionId) {
 
 function loadRole(slug) {
   fetch('/api/role/' + slug).then(r => r.json()).then(data => {
-    if (data.error) { alert(data.error); return; }
+    if (data.error) { showToast(data.error, 'error'); return; }
     _editingRole = slug;
     document.getElementById('mgrSlug').value = slug;
     document.getElementById('mgrSlug').disabled = true;
@@ -2553,9 +2607,9 @@ function createRole() {
   try {
     const raw = document.getElementById('mgrTests').value.trim();
     if (raw) tests = JSON.parse(raw);
-  } catch(e) { alert('Invalid test JSON: ' + e.message); return; }
+  } catch(e) { showToast('Invalid test JSON: ' + e.message, 'error'); return; }
 
-  if (!slug || !name || !prompt) { alert('Slug, Name, and System Prompt are required.'); return; }
+  if (!slug || !name || !prompt) { showToast('Slug, Name, and System Prompt are required.', 'warning'); return; }
 
   fetch('/api/role/create', {
     method: 'POST',
@@ -2579,7 +2633,7 @@ function updateRole() {
   const context = document.getElementById('mgrContext').value.trim();
   const change_note = document.getElementById('mgrChangeNote').value.trim();
 
-  if (!change_note) { alert('Please add a change note describing what you changed.'); return; }
+  if (!change_note) { showToast('Please add a change note describing what you changed.', 'warning'); return; }
 
   fetch('/api/role/update', {
     method: 'POST',
@@ -2600,13 +2654,14 @@ function updateRole() {
 }
 
 function runCalibration() {
+  const role = document.getElementById('calRole').value;
   document.getElementById('btnCalibrate').disabled = true;
   showProgress('cal');
 
   fetch('/api/calibrate', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: '{}'
+    body: JSON.stringify({role})
   }).then(r => r.json()).then(d => pollJob(d.job_id, 'cal'));
 }
 
@@ -2679,7 +2734,7 @@ function evalWithImprovedPrompt() {
 
 function copyImprovedPrompt() {
   const text = document.getElementById('improvedPromptText').value;
-  navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
+  navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!', 'success'));
 }
 
 function addManualTestCase() {
@@ -2691,7 +2746,7 @@ function addManualTestCase() {
   const weight = parseInt(document.getElementById('manualWeight').value);
 
   if (!id || !question || !criteriaText) {
-    alert('Please fill in at least Test ID, Question, and Criteria.');
+    showToast('Please fill in at least Test ID, Question, and Criteria.', 'warning');
     return;
   }
 
@@ -2747,9 +2802,9 @@ function saveAsTestSuite() {
     body: JSON.stringify({role, test_cases: _generatedTests, merge: false})
   }).then(r => r.json()).then(d => {
     if (d.success) {
-      alert('Test suite saved to: ' + d.path + '\n\nIt will appear in the Role dropdown after restarting the dashboard.');
+      showToast('Test suite saved! Restart dashboard to see it in dropdowns.', 'success');
     } else {
-      alert('Error: ' + d.error);
+      showToast(d.error, 'error');
     }
   });
 }
@@ -2803,6 +2858,8 @@ function showProgress(prefix) {
   document.getElementById(prefix + 'Progress').classList.add('active');
   document.getElementById(prefix + 'Result').classList.remove('active');
   document.getElementById(prefix + 'Bar').style.width = '0%';
+  const textEl = document.getElementById(prefix + 'Text');
+  if (textEl) textEl.innerHTML = '<span class="spinner"></span> Starting...';
 }
 
 function pollJob(jobId, prefix) {
@@ -2811,8 +2868,8 @@ function pollJob(jobId, prefix) {
       if (job.total > 0) {
         const pct = Math.round((job.progress / job.total) * 100);
         document.getElementById(prefix + 'Bar').style.width = pct + '%';
-        document.getElementById(prefix + 'Text').textContent =
-          `Testing ${job.current_test} (${job.progress}/${job.total})`;
+        document.getElementById(prefix + 'Text').innerHTML =
+          `<span class="spinner"></span> ${job.current_test} (${job.progress}/${job.total})`;
       }
       if (job.status === 'done' || job.status === 'error') {
         clearInterval(iv);
