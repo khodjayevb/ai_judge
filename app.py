@@ -7,11 +7,19 @@ Open: http://localhost:5000
 
 import sys
 import json
+import logging
 import threading
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
 

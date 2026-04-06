@@ -5,10 +5,57 @@ Evaluation engine: runs test cases, scores responses, captures performance metri
 from __future__ import annotations
 
 import time
+import logging
 from dataclasses import dataclass, field
 
 from evaluators.llm_client import chat, ResponseMetrics
 from evaluators.deepeval_adapter import create_judge_model, evaluate_criteria, evaluate_safety
+
+logger = logging.getLogger(__name__)
+
+
+class TestCaseValidationError(Exception):
+    """Raised when test case format is invalid."""
+    pass
+
+
+def validate_test_cases(test_cases: list[dict]) -> list[str]:
+    """Validate test case format. Returns list of warnings (empty = all good)."""
+    warnings = []
+    if not test_cases:
+        raise TestCaseValidationError("Test suite is empty — no test cases to evaluate.")
+
+    required_fields = {"id", "question", "criteria"}
+    for i, tc in enumerate(test_cases):
+        # Check required fields
+        missing = required_fields - set(tc.keys())
+        if missing:
+            raise TestCaseValidationError(f"Test case #{i+1}: missing required fields: {missing}")
+
+        # Check types
+        if not isinstance(tc.get("question", ""), str) or not tc["question"].strip():
+            raise TestCaseValidationError(f"Test case '{tc.get('id', i+1)}': question must be a non-empty string")
+
+        if not isinstance(tc.get("criteria", []), list) or len(tc["criteria"]) == 0:
+            raise TestCaseValidationError(f"Test case '{tc.get('id', i+1)}': criteria must be a non-empty list")
+
+        # Warnings (non-fatal)
+        if "category" not in tc:
+            warnings.append(f"Test '{tc['id']}': no category — will be grouped as 'General'")
+            tc["category"] = "General"
+
+        if "weight" not in tc:
+            warnings.append(f"Test '{tc['id']}': no weight — defaulting to 2")
+            tc["weight"] = 2
+
+        if len(tc["criteria"]) > 5:
+            warnings.append(f"Test '{tc['id']}': {len(tc['criteria'])} criteria (max recommended: 5)")
+
+        for j, c in enumerate(tc["criteria"]):
+            if not isinstance(c, str) or not c.strip():
+                raise TestCaseValidationError(f"Test '{tc['id']}': criterion #{j+1} must be a non-empty string")
+
+    return warnings
 
 
 @dataclass
@@ -232,6 +279,13 @@ def run_evaluation(
     on_progress: callable = None,
 ) -> EvalReport:
     """Execute the full evaluation pipeline."""
+    # Validate test cases before starting
+    warnings = validate_test_cases(test_cases)
+    for w in warnings:
+        logger.warning(w)
+
+    logger.info(f"Starting evaluation: role={role_slug}, prompt={prompt_name} v{prompt_version}, tests={len(test_cases)}")
+
     report = EvalReport(prompt_name=prompt_name, prompt_version=prompt_version)
     judge_model = create_judge_model()
     t0 = time.time()
@@ -240,29 +294,45 @@ def run_evaluation(
         if on_progress:
             on_progress(i + 1, len(test_cases), tc["id"])
 
+        logger.info(f"[{i+1}/{len(test_cases)}] Evaluating {tc['id']} ({tc.get('category', 'General')})")
+
         # Step 1: Get model response + metrics
         t1 = time.time()
-        response, metrics = chat(system_prompt, tc["question"], role_slug=role_slug)
+        try:
+            response, metrics = chat(system_prompt, tc["question"], role_slug=role_slug)
+        except Exception as e:
+            logger.error(f"[{tc['id']}] Target model call failed: {e}")
+            response = f"[ERROR: Target model failed — {str(e)[:200]}]"
+            metrics = ResponseMetrics(model_id="error")
 
         # Step 2: Evaluate response against criteria via deepeval (with judge context)
-        eval_results = evaluate_criteria(
-            question=tc["question"],
-            response=response,
-            criteria=tc["criteria"],
-            domain=domain,
-            judge_model=judge_model,
-            role_slug=role_slug,
-        )
+        try:
+            eval_results = evaluate_criteria(
+                question=tc["question"],
+                response=response,
+                criteria=tc["criteria"],
+                domain=domain,
+                judge_model=judge_model,
+                role_slug=role_slug,
+            )
+        except Exception as e:
+            logger.error(f"[{tc['id']}] Criteria evaluation failed: {e}")
+            eval_results = [{"score": 0.0, "explanation": f"Evaluation error: {str(e)[:200]}"} for _ in tc["criteria"]]
 
         # Step 3: Run safety checks (pass context for hallucination detection)
-        safety_results = evaluate_safety(
-            question=tc["question"],
-            response=response,
-            judge_model=judge_model,
-            context=tc.get("context"),
-        )
+        try:
+            safety_results = evaluate_safety(
+                question=tc["question"],
+                response=response,
+                judge_model=judge_model,
+                context=tc.get("context"),
+            )
+        except Exception as e:
+            logger.error(f"[{tc['id']}] Safety evaluation failed: {e}")
+            safety_results = {}
 
         elapsed = time.time() - t1
+        logger.info(f"[{tc['id']}] Done in {elapsed:.1f}s — GEval avg: {sum(r.get('score',0) for r in eval_results)/len(eval_results):.0%}")
 
         # Step 4: Build criterion results
         criteria_results = []
@@ -293,4 +363,10 @@ def run_evaluation(
         )
 
     report.total_elapsed = round(time.time() - t0, 2)
+    logger.info(
+        f"Evaluation complete: {prompt_name} v{prompt_version} | "
+        f"GEval={report.overall_pct}% | DAG={report.overall_dag_pct}% | "
+        f"Combined={report.consolidated_pct}% ({report.consolidated_grade}) | "
+        f"{report.total_elapsed}s total"
+    )
     return report
