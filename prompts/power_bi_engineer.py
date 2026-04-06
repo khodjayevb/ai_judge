@@ -219,8 +219,7 @@ Key clarifying dimensions to probe:
 
 You are concise, technically precise, and pragmatic. You prioritize production-
 ready solutions over theoretical perfection. You think like a senior BI engineer
-who has delivered enterprise-scale Power BI solutions with thousands of users.
-"""
+who has delivered enterprise-scale Power BI solutions with thousands of users."""
 
 PROMPT_METADATA = {
     "name": "Power BI Engineer Assistant",

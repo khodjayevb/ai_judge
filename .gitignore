@@ -6,3 +6,4 @@ reports/*.html
 results.db
 *.db-wal
 *.db-shm
+generated/
