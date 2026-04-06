@@ -889,11 +889,17 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Evaluation Framework</title>
 <style>
-  :root {
+  :root, [data-theme="dark"] {
     --bg: #0f172a; --surface: #1e293b; --surface2: #334155;
     --text: #e2e8f0; --text2: #94a3b8; --accent: #38bdf8;
     --green: #22c55e; --yellow: #eab308; --red: #ef4444;
     --orange: #f97316; --purple: #a78bfa;
+  }
+  [data-theme="light"] {
+    --bg: #f8fafc; --surface: #ffffff; --surface2: #e2e8f0;
+    --text: #1e293b; --text2: #475569; --accent: #0284c7;
+    --green: #16a34a; --yellow: #ca8a04; --red: #dc2626;
+    --orange: #ea580c; --purple: #7c3aed;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.6; }
@@ -968,18 +974,114 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <body>
 <div class="container">
 
-  <h1>AI Evaluation Framework</h1>
-  <p class="subtitle">Evaluate, compare, and track AI system prompts</p>
-  <div style="display:flex;gap:1rem;justify-content:center;margin-bottom:1.5rem;flex-wrap:wrap">
-    <span id="headerTarget" style="background:var(--surface);padding:0.4rem 1rem;border-radius:8px;font-size:0.85rem">
+  <!-- Header Bar -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+    <h1 style="margin:0;font-size:1.5rem">AI Evaluation Framework</h1>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <button onclick="toggleTheme()" style="background:var(--surface);border:1px solid var(--surface2);border-radius:8px;padding:0.4rem 0.7rem;cursor:pointer;color:var(--text);font-size:0.85rem" title="Toggle light/dark theme" id="themeBtn">☀️ Light</button>
+      <button onclick="toggleSettings()" style="background:var(--surface);border:1px solid var(--surface2);border-radius:8px;padding:0.4rem 0.7rem;cursor:pointer;color:var(--text);font-size:0.85rem" title="Settings">⚙️ Settings</button>
+    </div>
+  </div>
+  <div style="display:flex;gap:0.75rem;justify-content:center;margin-bottom:1.5rem;flex-wrap:wrap">
+    <span id="headerTarget" style="background:var(--surface);padding:0.3rem 0.8rem;border-radius:8px;font-size:0.8rem">
       <span style="color:var(--text2)">Target:</span> <strong>{{ config.TARGET_MODEL }}</strong> <span style="color:var(--text2)">({{ config.TARGET_PROVIDER }})</span>
     </span>
-    <span style="background:var(--surface);padding:0.4rem 1rem;border-radius:8px;font-size:0.85rem">
+    <span style="background:var(--surface);padding:0.3rem 0.8rem;border-radius:8px;font-size:0.8rem">
       <span style="color:var(--text2)">Judge:</span> <strong>{{ config.get_judge_config()['model'] }}</strong> <span style="color:var(--text2)">({{ config.get_judge_config()['provider'] }})</span>
     </span>
-    <span style="background:{{'var(--green)' if config.MODE == 'live' else 'var(--yellow)'}};color:#000;padding:0.4rem 1rem;border-radius:8px;font-size:0.85rem;font-weight:600">
+    <span style="background:{{'var(--green)' if config.MODE == 'live' else 'var(--yellow)'}};color:#000;padding:0.3rem 0.8rem;border-radius:8px;font-size:0.8rem;font-weight:600">
       {{ config.MODE.upper() }}
     </span>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;overflow-y:auto">
+    <div style="max-width:900px;margin:2rem auto;background:var(--bg);border-radius:16px;padding:2rem;border:1px solid var(--surface2)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h2 style="color:var(--accent);margin:0;border:none">Settings</h2>
+        <button onclick="toggleSettings()" style="background:var(--surface2);border:none;border-radius:8px;padding:0.4rem 0.8rem;cursor:pointer;color:var(--text);font-size:1rem">✕ Close</button>
+      </div>
+      <p style="color:var(--text2);font-size:0.85rem;margin-bottom:1rem">Configure target model, judge model, and per-role Foundry Assistant mappings.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+        <div style="background:var(--surface);border-radius:8px;padding:1.25rem">
+          <h4 style="color:var(--accent);margin-bottom:0.75rem">Target Model</h4>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Provider</label>
+            <select id="setTargetProvider">
+              <option value="azure">Azure OpenAI</option>
+              <option value="azure_assistant">Azure Foundry Assistant</option>
+              <option value="azure_foundry">Azure AI Foundry</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic / Claude</option>
+              <option value="google">Google Gemini</option>
+              <option value="ollama">Ollama (local)</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>API Key</label>
+            <input type="password" id="setTargetKey" placeholder="API key">
+          </div>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Model / Deployment</label>
+            <input type="text" id="setTargetModel" placeholder="e.g., gpt-4o">
+          </div>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Base URL</label>
+            <input type="text" id="setTargetURL" placeholder="https://your-resource.openai.azure.com">
+          </div>
+          <div class="form-group">
+            <label>API Version</label>
+            <input type="text" id="setTargetVersion" placeholder="2024-08-01-preview">
+          </div>
+        </div>
+        <div style="background:var(--surface);border-radius:8px;padding:1.25rem">
+          <h4 style="color:var(--purple);margin-bottom:0.75rem">Judge Model</h4>
+          <p style="color:var(--text2);font-size:0.8rem;margin-bottom:0.5rem">Leave empty to use same as target.</p>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Provider</label>
+            <select id="setJudgeProvider">
+              <option value="">(same as target)</option>
+              <option value="azure">Azure OpenAI</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic / Claude</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>API Key</label>
+            <input type="password" id="setJudgeKey" placeholder="(falls back to target)">
+          </div>
+          <div class="form-group" style="margin-bottom:0.5rem">
+            <label>Model / Deployment</label>
+            <input type="text" id="setJudgeModel" placeholder="e.g., gpt-5.4">
+          </div>
+          <div class="form-group">
+            <label>Base URL</label>
+            <input type="text" id="setJudgeURL" placeholder="(falls back to target)">
+          </div>
+        </div>
+      </div>
+
+      <h4 style="color:var(--accent);margin-top:1.5rem;margin-bottom:0.5rem">Per-Role Foundry Assistant Mapping</h4>
+      <table class="history-table" style="font-size:0.85rem">
+        <thead><tr><th>Role</th><th>Assistant ID</th><th>Description</th></tr></thead>
+        <tbody>
+          {% for r in roles %}
+          <tr>
+            <td style="color:var(--accent);font-weight:600">{{ r.slug }}</td>
+            <td><input type="text" id="asst_{{ r.slug }}" placeholder="asst_abc123..." style="background:var(--bg);color:var(--text);border:1px solid var(--surface2);border-radius:4px;padding:0.3rem 0.5rem;width:100%;font-size:0.85rem;font-family:monospace"></td>
+            <td style="color:var(--text2);font-size:0.8rem">{{ r.name }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div style="display:flex;gap:0.5rem;margin-top:1rem">
+        <button class="btn btn-primary" onclick="saveSettings()">Save & Restart Required</button>
+        <button class="btn" style="background:var(--surface2);color:var(--text)" onclick="loadSettings()">Reload</button>
+      </div>
+      <div class="result-flash" id="settingsResult" style="margin-top:0.75rem"></div>
+    </div>
   </div>
 
   <!-- Tabs -->
@@ -989,7 +1091,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="tab" onclick="switchTab('redteam')">Red Team</div>
     <div class="tab" onclick="switchTab('generate')">Generate Tests</div>
     <div class="tab" onclick="switchTab('calibrate')">Judge Calibration</div>
-    <div class="tab" onclick="switchTab('settings')">Settings</div>
     <div class="tab" onclick="switchTab('manage')">Manage Roles</div>
     <div class="tab" onclick="switchTab('docs')">Docs</div>
   </div>
@@ -1304,11 +1405,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </div>
   </div>
 
-  <!-- ═══ SETTINGS TAB ═══ -->
-  <div class="tab-content" id="tab-settings">
-    <div class="panel">
-      <div class="panel-title">Settings</div>
-      <p style="color:var(--text2);font-size:0.85rem;margin-bottom:1rem">Configure target model, judge model, and per-role Foundry Assistant mappings. Changes saved to <code>.env</code> — restart dashboard to apply.</p>
+  <!-- Old Settings tab removed — now in header modal -->
+  <div style="display:none"><!-- placeholder to keep structure -->
+  <div><!-- inner -->
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
         <!-- Target Model -->
@@ -2009,6 +2108,33 @@ function getPromptValue(selectId, textareaId) {
     return 'custom:' + document.getElementById(textareaId).value;
   }
   return sel.value;
+}
+
+// ── Theme ──
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  document.getElementById('themeBtn').textContent = next === 'dark' ? '☀️ Light' : '🌙 Dark';
+}
+
+// Apply saved theme on load
+(function() {
+  const saved = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = saved === 'dark' ? '☀️ Light' : '🌙 Dark';
+})();
+
+function toggleSettings() {
+  const modal = document.getElementById('settingsModal');
+  if (modal.style.display === 'none' || !modal.style.display) {
+    modal.style.display = 'block';
+    loadSettings();
+  } else {
+    modal.style.display = 'none';
+  }
 }
 
 // ── Settings ──
