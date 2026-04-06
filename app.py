@@ -1062,23 +1062,15 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <div class="container">
 
   <!-- Header Bar -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
     <h1 style="margin:0;font-size:1.5rem">AI Evaluation Framework</h1>
     <div style="display:flex;gap:0.5rem;align-items:center">
+      <span style="background:{{'var(--green)' if config.MODE == 'live' else 'var(--yellow)'}};color:#000;padding:0.3rem 0.7rem;border-radius:6px;font-size:0.8rem;font-weight:600">
+        {{ config.MODE.upper() }}
+      </span>
       <button onclick="toggleTheme()" style="background:var(--surface);border:1px solid var(--surface2);border-radius:8px;padding:0.4rem 0.7rem;cursor:pointer;color:var(--text);font-size:0.85rem" title="Toggle light/dark theme" id="themeBtn">☀️ Light</button>
       <button onclick="toggleSettings()" style="background:var(--surface);border:1px solid var(--surface2);border-radius:8px;padding:0.4rem 0.7rem;cursor:pointer;color:var(--text);font-size:0.85rem" title="Settings">⚙️ Settings</button>
     </div>
-  </div>
-  <div style="display:flex;gap:0.75rem;justify-content:center;margin-bottom:1.5rem;flex-wrap:wrap">
-    <span id="headerTarget" style="background:var(--surface);padding:0.3rem 0.8rem;border-radius:8px;font-size:0.8rem">
-      <span style="color:var(--text2)">Target:</span> <strong>{{ config.TARGET_MODEL }}</strong> <span style="color:var(--text2)">({{ config.TARGET_PROVIDER }})</span>
-    </span>
-    <span style="background:var(--surface);padding:0.3rem 0.8rem;border-radius:8px;font-size:0.8rem">
-      <span style="color:var(--text2)">Judge:</span> <strong>{{ config.get_judge_config()['model'] }}</strong> <span style="color:var(--text2)">({{ config.get_judge_config()['provider'] }})</span>
-    </span>
-    <span style="background:{{'var(--green)' if config.MODE == 'live' else 'var(--yellow)'}};color:#000;padding:0.3rem 0.8rem;border-radius:8px;font-size:0.8rem;font-weight:600">
-      {{ config.MODE.upper() }}
-    </span>
   </div>
 
   <!-- Settings Modal -->
@@ -2140,15 +2132,7 @@ document.querySelectorAll('select[id*=Model]').forEach(sel => {
 });
 
 function updateHeaderTarget() {
-  // Show the currently selected model in the active tab
-  const activeTab = document.querySelector('.tab-content.active');
-  if (!activeTab) return;
-  const modelSel = activeTab.querySelector('select[id*=Model]');
-  if (!modelSel) return;
-  const model = getModel(modelSel.id);
-  const display = model || defaultModel;
-  document.getElementById('headerTarget').innerHTML =
-    `<span style="color:var(--text2)">Target:</span> <strong>${display}</strong> <span style="color:var(--text2)">(${defaultProvider})</span>`;
+  // No-op — header no longer shows target/judge (moved to Settings)
 }
 
 function getModel(selectId) {
@@ -2276,11 +2260,12 @@ function saveSettings() {
     JUDGE_BASE_URL: document.getElementById('setJudgeURL').value,
   };
 
-  // Collect assistant mappings
+  // Collect assistant mappings (skip status elements)
   const role_assistants = {};
-  document.querySelectorAll('[id^="asst_"]').forEach(el => {
+  document.querySelectorAll('input[id^="asst_"]').forEach(el => {
+    if (el.id.startsWith('asst_status_')) return;
     const slug = el.id.replace('asst_', '');
-    if (el.value.trim()) role_assistants[slug] = el.value.trim();
+    if (el.value && el.value.trim()) role_assistants[slug] = el.value.trim();
   });
 
   fetch('/api/settings', {
