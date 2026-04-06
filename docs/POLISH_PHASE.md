@@ -111,9 +111,9 @@
 ## Polish Checklist
 
 ### Backend
-- [ ] Add try/except with retry (3 attempts) for all LLM API calls
-- [ ] Add configurable timeout on API calls
-- [ ] Remove dead demo response code
+- [x] Add try/except with retry (3 attempts) for all LLM API calls ✅ _Done: _with_retry() with exponential backoff (2s, 4s, 8s), transient error detection_
+- [x] Add configurable timeout on API calls ✅ _Done: API_TIMEOUT_SECONDS=120 on all client constructors_
+- [x] Remove dead demo response code ✅ _Done: deleted 1,700 lines (demo_responses.py + all demo branches)_
 - [ ] Consolidate Windows emoji patches into one utility
 - [ ] Add structured logging (Python logging module)
 - [ ] Validate test case format before evaluation
